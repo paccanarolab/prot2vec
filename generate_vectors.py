@@ -19,7 +19,7 @@ def extract_proteins_representation(device, model, dataset, set_label, data):
         v = F.normalize(model.prot2vec(p))
         data['protein'].append(prot)
         data['vector'].append(v.flatten().cpu().detach().numpy())
-        data['set'].append('train')
+        data['set'].append(set_label)
 
 def run():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -58,8 +58,9 @@ def run():
             extract_proteins_representation(device, model, ss_bp_test, 'test', data)
             df = pd.DataFrame(data)
 
-        print('saving representation to pickled file: representations.pkl')
-        df.to_pickle('representations.pkl')
+        representation_file = f'{save_name}-representations.pkl'
+        print(f'saving representation to pickled file: {representation_file}')
+        df.to_pickle(representation_file)
 
 if __name__ == '__main__':
     run()
