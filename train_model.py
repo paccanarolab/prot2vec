@@ -10,6 +10,7 @@ from models import (SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
                     SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron)
 from models import count_parameters, save_checkpoint
 from itertools import product
+import pickle
 
 
 def run():
@@ -41,14 +42,14 @@ def run():
         SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
         SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron
     ]
-    model_classes = [SiameseSimilarityNet, SiameseSimilaritySmall]
+    model_classes = [SiameseSimilarityNet]
 
     activations = ['relu', 'sigmoid']
     activations = ['relu']
 
     for model_class, activation in product(model_classes, activations):
 
-        model = model_class(activation=activation).to(device)
+        model = model_class(activation=activation, dim_first_hidden_layer=512).to(device)
         print(f'running model {model.name()}')
 
         count_parameters(model)
@@ -125,9 +126,14 @@ def run():
             ax.plot(train_losses, label='Train Loss')
             ax.plot(val_losses, label="Validation Loss")
             ax.legend(loc='upper right')
-        plt.savefig(
-            f'E:/prot2vec/loss-evol-[{model.name()}]-[{datetime.today().strftime("%Y-%m-%d-%H-%M-%S")}].png')
+        basename = f'E:/prot2vec/loss-evol-[{model.name()}]-[{datetime.today().strftime("%Y-%m-%d-%H-%M-%S")}]'
+        figname = f'{basename}.png'
+        dataname = f'{basename}.pkl'
+        plt.savefig(figname)
         plt.close('all')
+        with open(dataname, 'wb') as f:
+            pickle.dump(train_losses, f)
+            pickle.dump(val_losses, f)
 
     print("Finished Training")
 

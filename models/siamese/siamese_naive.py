@@ -20,23 +20,26 @@ class SiameseSimilarity(nn.Module):
 
 class SiameseSimilarityNet(SiameseSimilarity):
 
-    def __init__(self, activation=SiameseSimilarity.DEFAULT_ACTIVATION):
+    def __init__(self, activation=SiameseSimilarity.DEFAULT_ACTIVATION, dim_first_hidden_layer=1024):
         super(SiameseSimilarityNet, self).__init__(activation)
-
+        self._d1 = dim_first_hidden_layer
         self.prot2vec = nn.Sequential(
-            nn.Linear(7098, 1024),
-            nn.BatchNorm1d(1024),
+            nn.Linear(7098, self._d1),
+            nn.BatchNorm1d(self._d1),
             self.activation(),
-            nn.Linear(1024, 512),
-            nn.BatchNorm1d(512),
+            nn.Linear(self._d1, self._d1//2),
+            nn.BatchNorm1d(self._d1//2),
             self.activation(),
-            nn.Linear(512, 256),
-            nn.BatchNorm1d(256),
+            nn.Linear(self._d1//2, self._d1//4),
+            nn.BatchNorm1d(self._d1//4),
             self.activation(),
-            nn.Linear(256, 256),
-            nn.BatchNorm1d(256),
+            nn.Linear(self._d1//4, self._d1//4),
+            nn.BatchNorm1d(self._d1//4),
             self.activation(),
         )
+
+    def name(self):
+        return f'{super().name()}-{self._d1}'
 
     def forward(self, p1, p2):
         p1 = F.normalize(self.prot2vec(p1))

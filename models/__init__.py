@@ -1,4 +1,5 @@
 from .siamese import *
+from .knn import *
 import torch
 
 def count_parameters(model):
