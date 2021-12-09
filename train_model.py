@@ -49,7 +49,7 @@ def run():
 
     for model_class, activation in product(model_classes, activations):
 
-        model = model_class(activation=activation, dim_first_hidden_layer=512).to(device)
+        model = model_class(activation=activation, dim_first_hidden_layer=256).to(device)
         print(f'running model {model.name()}')
 
         count_parameters(model)

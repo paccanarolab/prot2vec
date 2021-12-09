@@ -41,7 +41,7 @@ def run():
 
     for model_class, activation in product(model_classes, activations):
 
-        model = model_class(activation=activation).to(device)
+        model = model_class(activation=activation, dim_first_hidden_layer=512).to(device)
 
         # this must be the same as the one used in train_model.py
         # for the time being, this is hardcoded
