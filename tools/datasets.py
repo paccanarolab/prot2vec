@@ -10,10 +10,10 @@ from rich.progress import track
 class SemanticSimilarityDataset(Dataset):
 
     def __init__(self, data_directory):
-        interpro_dataset = pd.read_csv(os.path.join(data_directory, 'interpro.tab'), sep='\t')
+        interpro_dataset = pd.read_table(os.path.join(data_directory, 'interpro.tab'))
         ip_features = interpro_dataset.columns[~interpro_dataset.columns.isin(['Protein accession'])].to_numpy()
         self.interpro_dict = {}
-        self.ss_dataset = pd.read_csv(os.path.join(data_directory, 'bp-ss.tab'), sep='\t')
+        self.ss_dataset = pd.read_table(os.path.join(data_directory, 'bp-ss.tab'))
         for protein in track(interpro_dataset['Protein accession'].unique(), description='Building InterPro dictionary'):
             self.interpro_dict[protein] = interpro_dataset[
                 interpro_dataset['Protein accession'] == protein][ip_features].to_numpy().flatten()
@@ -29,6 +29,37 @@ class SemanticSimilarityDataset(Dataset):
                 torch.from_numpy(self.interpro_dict[protein2].astype(np.float32)),
                 torch.from_numpy(np.array([similarity]).astype(np.float32)))
 
+class MultiTaskSemanticSimilarityDataset(Dataset):
+
+    def __init__(self, data_directory, string_columns):
+        interpro_dataset = pd.read_table(os.path.join(data_directory, 'interpro.tab'))
+        ip_features = interpro_dataset.columns[~interpro_dataset.columns.isin(['Protein accession'])].to_numpy()
+        self.string_columns = string_columns
+        self.interpro_dict = {}
+        ss_dataset = pd.read_table(os.path.join(data_directory, 'bp-ss.tab'))
+        string_nets = pd.read_table(os.path.join(data_directory, "string_nets.tab"))
+        string_nets = string_nets[["protein1", "protein2"] + self.string_columns]
+        self.multitask_dataset = ss_dataset.merge(string_nets, how="left")
+        for protein in track(interpro_dataset['Protein accession'].unique(),
+                             description='Building InterPro dictionary'):
+            self.interpro_dict[protein] = interpro_dataset[
+                interpro_dataset['Protein accession'] == protein][ip_features].to_numpy().flatten()
+
+    def __len__(self):
+        return self.multitask_dataset.shape[0]
+
+    def __getitem__(self, item):
+        protein1 = self.multitask_dataset.iloc[item].protein1
+        protein2 = self.multitask_dataset.iloc[item].protein2
+        similarity = self.multitask_dataset.iloc[item].scaled_similarity
+        ret = [torch.from_numpy(self.interpro_dict[protein1].astype(np.float32)),
+               torch.from_numpy(self.interpro_dict[protein2].astype(np.float32)),
+               torch.from_numpy(np.array([similarity]).astype(np.float32))]
+        for c in self.string_columns:
+            value = self.multitask_dataset.iloc[item][c]
+            ret.append(torch.from_numpy(np.array([value]).astype(np.float32)))
+
+        return *ret,
 
 class SemanticSimilarityOnDeviceDataset(Dataset):
 
@@ -71,7 +102,8 @@ class SparseSemanticSimilarityDatasetDevice(Dataset):
             ip_features = interpro_dataset.columns[~interpro_dataset.columns.isin(['Protein accession'])].to_numpy()
             interpro_dict = {}
             ss_dataset = pd.read_csv(os.path.join(data_directory, 'bp-ss.tab'), sep='\t')
-            for protein in track(interpro_dataset['Protein accession'].unique(), description='Building InterPro dictionary'):
+            for protein in track(interpro_dataset['Protein accession'].unique(),
+                                 description='Building InterPro dictionary'):
                 interpro_dict[protein] = interpro_dataset[
                     interpro_dataset['Protein accession'] == protein][ip_features].to_numpy().flatten()
             len_features = ip_features.shape[0]

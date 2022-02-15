@@ -1,8 +1,9 @@
 from .siamese_naive import SiameseSimilarityNet, SiameseSimilarityPerceptronNet, \
-    SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron
+    SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron, SiameseSimilarityMultiTask
 __all__ = [
     'SiameseSimilarityNet',
     'SiameseSimilarityPerceptronNet',
     'SiameseSimilaritySmall',
-    'SiameseSimilaritySmallPerceptron'
+    'SiameseSimilaritySmallPerceptron',
+    'SiameseSimilarityMultiTask'
 ]

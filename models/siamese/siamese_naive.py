@@ -116,3 +116,37 @@ class SiameseSimilaritySmallPerceptron(SiameseSimilaritySmall):
         p2 = self.prot2vec(p2)
         cat = torch.hstack([p1, p2])
         return self.embedding(cat)
+
+
+class SiameseSimilarityMultiTask(SiameseSimilarityNet):
+
+    def __init__(self,
+                 activation=SiameseSimilarity.DEFAULT_ACTIVATION,
+                 dim_first_hidden_layer=1024,
+                 tasks_columns=None
+                 ):
+        super(SiameseSimilarityMultiTask, self).__init__(activation=activation,
+                                                         dim_first_hidden_layer=dim_first_hidden_layer)
+        self._tasks = tasks_columns
+        self._dp2v = self._d1 // 4
+
+        self._tasks_heads = {}
+        for task in self._tasks:
+            self._tasks_heads[task] = nn.Sequential(
+                nn.Linear(self._dp2v * 2, self._dp2v//2),
+                nn.BatchNorm1d(self._dp2v//2),
+                self.activation(),
+                nn.Linear(self._dp2v//2, 1),
+                self.activation()
+            )
+
+    def forward(self, p1, p2):
+        p1 = F.normalize(self.prot2vec(p1))
+        p2 = F.normalize(self.prot2vec(p2))
+        p1_p2 = torch.cat([p1, p2], 1)
+        batch_size = p1.shape[0]
+        dim = p1.shape[1]
+        main_head = torch.bmm(p1.reshape(batch_size, 1, dim), p2.reshape(batch_size, dim, 1)).squeeze(-1)
+        secondary_heads = [self._tasks_heads[t](p1_p2) for t in self._tasks]
+
+        return main_head, *secondary_heads

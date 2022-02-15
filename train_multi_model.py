@@ -2,12 +2,11 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from tools.datasets import SemanticSimilarityDataset
+from tools.datasets import MultiTaskSemanticSimilarityDataset
 from tools.utils import TrainingProgress
 from datetime import datetime
 import matplotlib.pyplot as plt
-from models import (SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
-                    SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron)
+from models import SiameseSimilarityMultiTask
 from models import count_parameters, save_checkpoint
 from itertools import product
 import pickle
@@ -17,20 +16,11 @@ def run():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using {device} device')
 
-    ss_bp_train = SemanticSimilarityDataset('../83333/train_data_not_homologous/')
-    ss_bp_val = SemanticSimilarityDataset('../83333/val_data_not_homologous/')
-    ss_bp_test = SemanticSimilarityDataset('../83333/test_data_not_homologous/')
+    secondary_tasks = ['neighborhood', 'fusion', 'cooccurence', 'coexpression', 'experiments','database', 'textmining']
 
-    # ss_bp_train = SemanticSimilarityOnDeviceDataset('../83333/train_data/', device)
-    # ss_bp_val = SemanticSimilarityOnDeviceDataset('../83333/val_data/', device)
-    # ss_bp_test = SemanticSimilarityOnDeviceDataset('../83333/test_data/', device)
-
-    # ss_bp_train = SemanticSimilarityDatasetDevice('E:/prot2vec/83333/train_data/',
-    #                                               device, 'E:/prot2vec/83333/train_data/tensor.pt')
-    # ss_bp_val = SemanticSimilarityDatasetDevice('E:/prot2vec/83333/val_data/',
-    #                                             device, 'E:/prot2vec/83333/val_data/tensor.pt')
-    # ss_bp_test = SemanticSimilarityDatasetDevice('E:/prot2vec/83333/test_data/',
-    #                                              device, 'E:/prot2vec/83333/test_data/tensor.pt')
+    ss_bp_train = MultiTaskSemanticSimilarityDataset('../83333/train_data_not_homologous/', secondary_tasks)
+    ss_bp_val = MultiTaskSemanticSimilarityDataset('../83333/val_data_not_homologous/', secondary_tasks)
+    ss_bp_test = MultiTaskSemanticSimilarityDataset('../83333/test_data_not_homologous/', secondary_tasks)
 
     for length, d in zip(['train', 'validation', 'test'], [ss_bp_train, ss_bp_val, ss_bp_test]):
         print(length, len(d))
@@ -38,18 +28,17 @@ def run():
     train_loader = DataLoader(ss_bp_train, batch_size=256, num_workers=20)
     val_loader = DataLoader(ss_bp_val, batch_size=175, num_workers=20, shuffle=True)
 
-    model_classes = [
-        SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
-        SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron
-    ]
-    model_classes = [SiameseSimilarityNet]
+    model_classes = [SiameseSimilarityMultiTask]
 
     activations = ['relu', 'sigmoid']
     activations = ['sigmoid']
 
+
     for model_class, activation in product(model_classes, activations):
 
-        model = model_class(activation=activation, dim_first_hidden_layer=256).to(device)
+        model = model_class(activation=activation,
+                            dim_first_hidden_layer=256,
+                            tasks_columns=secondary_tasks).to(device)
         print(f'running model {model.name()}')
 
         count_parameters(model)
@@ -57,6 +46,7 @@ def run():
         optimizer = optim.Adam(model.parameters(), lr=0.0006)
         num_epochs = 200
         criterion = nn.MSELoss()
+        tasks_criterion = nn.MSELoss()
         save_name = f'[{model.name()}]-{num_epochs}_epochs.pt'
 
         best_val_loss = float("Inf")
@@ -73,13 +63,17 @@ def run():
                 validation = progress.add_task(f"[cyan]Validation [{epoch+1}]",
                                                total=len(val_loader), progress_type="validation")
 
-                for p1, p2, sim in train_loader:
+                for p1, p2, sim, *tasks in train_loader:
                     # forward
                     p1 = p1.to(device)
                     p2 = p2.to(device)
                     sim = sim.to(device)
-                    outputs = model(p1, p2)
-                    loss = criterion(outputs, sim)
+                    tasks = [t.to(device) for t in tasks]
+                    sim_out, *outputs = model(p1, p2)
+                    sim_loss = criterion(sim_out, sim)
+                    tasks_losses = [tasks_criterion(o, t).to(device) for o, t in zip(outputs, tasks)]
+
+                    loss = torch.sum(torch.stack([sim_loss] + tasks_losses))
 
                     # backward and optimize
                     optimizer.zero_grad()
