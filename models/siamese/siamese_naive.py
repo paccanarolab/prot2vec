@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+import torch.nn.functional as functional
+
 
 class SiameseSimilarity(nn.Module):
 
@@ -42,8 +43,8 @@ class SiameseSimilarityNet(SiameseSimilarity):
         return f'{super().name()}-{self._d1}'
 
     def forward(self, p1, p2):
-        p1 = F.normalize(self.prot2vec(p1))
-        p2 = F.normalize(self.prot2vec(p2))
+        p1 = functional.normalize(self.prot2vec(p1))
+        p2 = functional.normalize(self.prot2vec(p2))
         batch_size = p1.shape[0]
         dim = p1.shape[1]
         return torch.bmm(p1.reshape(batch_size, 1, dim), p2.reshape(batch_size, dim, 1)).squeeze(-1)
@@ -88,12 +89,11 @@ class SiameseSimilaritySmall(SiameseSimilarity):
         )
 
     def forward(self, p1, p2):
-        p1 = F.normalize(self.prot2vec(p1))
-        p2 = F.normalize(self.prot2vec(p2))
+        p1 = functional.normalize(self.prot2vec(p1))
+        p2 = functional.normalize(self.prot2vec(p2))
         batch_size = p1.shape[0]
         dim = p1.shape[1]
         return torch.bmm(p1.reshape(batch_size, 1, dim), p2.reshape(batch_size, dim, 1)).squeeze(-1)
-
 
 
 class SiameseSimilaritySmallPerceptron(SiameseSimilaritySmall):
@@ -127,10 +127,10 @@ class SiameseSimilarityMultiTask(SiameseSimilarityNet):
                  ):
         super(SiameseSimilarityMultiTask, self).__init__(activation=activation,
                                                          dim_first_hidden_layer=dim_first_hidden_layer)
-        self._tasks = tasks_columns
+        self._tasks = tasks_columns if tasks_columns is not None else []
         self._dp2v = self._d1 // 4
 
-        self._tasks_heads = {}
+        self._tasks_heads = nn.ModuleDict()
         for task in self._tasks:
             self._tasks_heads[task] = nn.Sequential(
                 nn.Linear(self._dp2v * 2, self._dp2v//2),
@@ -141,8 +141,8 @@ class SiameseSimilarityMultiTask(SiameseSimilarityNet):
             )
 
     def forward(self, p1, p2):
-        p1 = F.normalize(self.prot2vec(p1))
-        p2 = F.normalize(self.prot2vec(p2))
+        p1 = functional.normalize(self.prot2vec(p1))
+        p2 = functional.normalize(self.prot2vec(p2))
         p1_p2 = torch.cat([p1, p2], 1)
         batch_size = p1.shape[0]
         dim = p1.shape[1]
