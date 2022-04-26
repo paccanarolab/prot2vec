@@ -1,7 +1,9 @@
 from rich.progress import track
 import numpy as np
 import pandas as pd
+import os
 from typing import Tuple
+
 
 def extract_uniprot_accession(protein_id: str) -> str:
     """
@@ -146,3 +148,25 @@ class SemanticSimilarityParser(object):
                 d['protein2'].append(proteins[i])
                 d['similarity'].append(sim)
         return np.array(proteins), pd.DataFrame(d)
+
+
+def parse_biogrid(filename) -> Tuple:
+    def get_uniprot_accession(biogrid_alt_id):
+        alt_ids = biogrid_alt_id.split("|")
+        for alt_id in alt_ids:
+            if "uniprot" in alt_id:
+                return alt_id.split(":")[-1]
+        return None
+
+    def clean_score(score_str):
+        if score_str == "-":
+            return np.nan
+        return float(score_str.split(":")[-1])
+
+    df = pd.read_table(filename)
+    df["protein1"] = df["Alt IDs Interactor A"].apply(get_uniprot_accession)
+    df["protein2"] = df["Alt IDs Interactor B"].apply(get_uniprot_accession)
+    df["weight"] = df["Confidence Values"].apply(clean_score)
+    df["weight"] = df["weight"].fillna(df["weight"].max())
+    df = df[["protein1", "protein2", "weight"]].dropna()
+    return np.unique(df[["protein1", "protein2"]].to_numpy().flatten()), df

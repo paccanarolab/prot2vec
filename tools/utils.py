@@ -34,6 +34,7 @@ class TrainingProgress(Progress):
                 )
             yield self.make_tasks_table([task])
 
+
 def save_list_to_file(item_list, filename):
     with open(filename, 'w') as out:
         for item in item_list:
