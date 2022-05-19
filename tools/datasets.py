@@ -5,6 +5,9 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 import os
 from rich.progress import track
+from abc import abstractmethod
+from better_abc import ABCMeta, abstract_attribute
+from typing import Union, List
 
 
 class SemanticSimilarityDataset(Dataset):
@@ -30,12 +33,12 @@ class SemanticSimilarityDataset(Dataset):
                 torch.from_numpy(np.array([similarity]).astype(np.float32)))
 
 
-def load_multiclass_dataset(data_directory,
-                            string_columns,
-                            include_homology=True,
-                            include_biogrid=True,
-                            negative_sampling=False,
-                            combine_string_columns=True):
+def load_dataset(data_directory,
+                 string_columns: Union[str, None] = None,
+                 include_homology=True,
+                 include_biogrid=True,
+                 negative_sampling=False,
+                 combine_string_columns=True):
     """
     Loads and serves a dataset from a directory containing compatible files:
     - interpro.tab
@@ -43,12 +46,15 @@ def load_multiclass_dataset(data_directory,
     - bp-ss.tab
     - string_nets.tab
 
+    Depending on the arguments passed to this function, files other than `interpro.tab` and
+    `bp-ss.tab` will become optional
+
     Parameters
     ----------
     data_directory : Path
         The directory that must contain all files to be loaded
-    string_columns : list of str
-        The columns of string_nets.tab that will be used
+    string_columns : list of str, default None
+        The columns of string_nets.tab that will be used. If None, the STRING databse will not be loaded
     include_homology : bool, default True
         whether to include homology as a task
     include_biogrid : bool, default True
@@ -70,29 +76,29 @@ def load_multiclass_dataset(data_directory,
         biogrid_dataset.columns = ["protein1", "protein2", "BIOGRID"]
     include_string = string_columns is not None
     ip_features = interpro_dataset.columns[~interpro_dataset.columns.isin(['Protein accession'])].to_numpy()
-    ss_dataset = pd.read_table(os.path.join(data_directory, 'bp-ss.tab'))
+    ss_dataset = pd.read_table(os.path.join(data_directory, 'bp-ss.tab'), names=["protein1", "protein2", "similarity"])
     if include_string:
         string_nets = pd.read_table(os.path.join(data_directory, "string_nets.tab"))
         string_nets = string_nets[["protein1", "protein2"] + string_columns]
 
-    multitask_dataset = ss_dataset
+    pairwise_dataset = ss_dataset
     if include_string:
-        multitask_dataset = multitask_dataset.merge(string_nets, how="left")
+        pairwise_dataset = pairwise_dataset.merge(string_nets, how="left")
     if include_homology:
-        multitask_dataset = multitask_dataset.merge(homology_dataset, how="left")
+        pairwise_dataset = pairwise_dataset.merge(homology_dataset, how="left")
     if include_biogrid:
-        multitask_dataset = multitask_dataset.merge(biogrid_dataset, how="left")
+        pairwise_dataset = pairwise_dataset.merge(biogrid_dataset, how="left")
 
     if include_string and combine_string_columns:
-        multitask_dataset["STRING"] = multitask_dataset[string_columns].mean(axis=1)
-        keep = [c for c in multitask_dataset if c not in string_columns]
-        multitask_dataset = multitask_dataset[keep]
+        pairwise_dataset["STRING"] = pairwise_dataset[string_columns].mean(axis=1)
+        keep = [c for c in pairwise_dataset if c not in string_columns]
+        pairwise_dataset = pairwise_dataset[keep]
 
-    for c in multitask_dataset.columns:
+    for c in pairwise_dataset.columns:
         if c not in ["protein1", "protein2"]:
-            m, M = multitask_dataset[c].min(), multitask_dataset[c].max()
+            m, M = pairwise_dataset[c].min(), pairwise_dataset[c].max()
             R = M - m
-            multitask_dataset[c] = ((multitask_dataset[c] - m) / R).fillna(0)
+            pairwise_dataset[c] = ((pairwise_dataset[c] - m) / R).fillna(0)
 
     for protein in track(interpro_dataset['Protein accession'].unique(), description='Building InterPro dictionary'):
         interpro_dict[protein] = interpro_dataset[
@@ -104,66 +110,142 @@ def load_multiclass_dataset(data_directory,
         # TODO: remove the seed
         rng = np.random.default_rng(0)
         #                                                         these columns don't require negative sampling
-        cols = [c for c in multitask_dataset.columns if c not in ["protein1",
+        cols = [c for c in pairwise_dataset.columns if c not in ["protein1",
                                                                   "protein2",
                                                                   "similarity",
                                                                   "homology"]]
         # add other columns that will be put under negative sampling
         for c in cols:
-            x_unknowns = multitask_dataset[multitask_dataset[c] == 0].index.values
-            x_positives = multitask_dataset[multitask_dataset[c] != 0].index.values
+            x_unknowns = pairwise_dataset[pairwise_dataset[c] == 0].index.values
+            x_positives = pairwise_dataset[pairwise_dataset[c] != 0].index.values
             num_positives = x_positives.shape[0]
             rng.shuffle(x_unknowns)
             x_negs = x_unknowns[:num_positives]
             indicator_col = f"ind_{c}"
-            multitask_dataset[indicator_col] = False
-            multitask_dataset.loc[x_positives, indicator_col] = True
-            multitask_dataset.loc[x_negs, indicator_col] = True
+            pairwise_dataset[indicator_col] = False
+            pairwise_dataset.loc[x_positives, indicator_col] = True
+            pairwise_dataset.loc[x_negs, indicator_col] = True
         if include_homology:
-            multitask_dataset["ind_homology"] = True
-        multitask_dataset["ind_similarity"] = True
+            pairwise_dataset["ind_homology"] = True
+        pairwise_dataset["ind_similarity"] = True
 
-    return interpro_df, multitask_dataset
+    return interpro_df, pairwise_dataset
 
-# https://discuss.pytorch.org/t/dataloader-much-slower-than-manual-batching/27014/5
 
-class FastMultitaskSemanticSimilarityDataset:
+# The Fast Datasets where implemented following this dicussion
+class FastDataset(metaclass=ABCMeta):
+    """
+    Faster batched dataset for PyTorch based on the following dicussion:
+    https://discuss.pytorch.org/t/dataloader-much-slower-than-manual-batching/27014/5
+    """
+
+    dataset_len : int = abstract_attribute()
+    batch_size : int = abstract_attribute()
+    shuffle : bool = abstract_attribute()
+
+    def __len__(self):
+        return self.batch_size
+
+    def __iter__(self):
+        if self.shuffle:
+            self.indices = torch.randperm(self.dataset_len)
+        else:
+            self.indices = None
+        self.i = 0
+        return self
+
+    def __next__(self):
+        if self.i >= self.dataset_len:
+            raise StopIteration
+        if self.indices is not None:
+            indices = self.indices[self.i: self.i+self.batch_size]
+            batch = self.get_tensors_(indices)
+        else:
+            batch = self.get_tensors_(np.arange(self.i, self.i+self.batch_size))
+        self.i += self.batch_size
+        return batch
+
+    @abstractmethod
+    def get_tensors_(self, indices):
+        raise NotImplementedError()
+
+
+class FastSemanticSimilarityDataset(FastDataset):
+    """
+    Loads and serves a dataset from a directory containing compatible files:
+    - interpro.tab
+    - bp-ss.tab
+
+    Parameters
+    ----------
+    data_directory : Path
+        The directory that must contain all files to be loaded
+    batch_size : int, default 32
+        Batch size
+    shuffle : bool, default False
+        whether to shuffle the data on each epoch
+    """
     def __init__(self,
                  data_directory,
-                 string_columns,
+                 batch_size=32,
+                 shuffle=False):
+        self.batch_size = batch_size
+        self.shuffle = shuffle
+        self.interpro_df, self.pairwise_dataset = load_dataset(
+            data_directory, string_columns=None,
+            include_biogrid=False, include_homology=False,
+            negative_sampling=False, combine_string_columns=False
+        )
+        self.dataset_len = self.pairwise_dataset.shape[0]
+        n_batches, remainder = divmod(self.dataset_len, self.batch_size)
+        if remainder > 0:
+            n_batches += 1
+        self.n_batches = n_batches
+
+    def get_tensors_(self, indices):
+        batch_data = self.pairwise_dataset.iloc[indices]
+        return (torch.from_numpy(self.interpro_df.loc[batch_data.protein1].values.astype(np.float32)),
+                torch.from_numpy(self.interpro_df.loc[batch_data.protein2].values.astype(np.float32)),
+                torch.from_numpy(batch_data["similarity"].values[:, np.newaxis].astype(np.float32)))
+
+
+class FastMultitaskSemanticSimilarityDataset(FastDataset):
+    """
+    Loads and serves a dataset from a directory containing compatible files:
+    - interpro.tab
+    - homology.tab
+    - bp-ss.tab
+    - string_nets.tab
+
+    Parameters
+    ----------
+    data_directory : Path
+        The directory that must contain all files to be loaded
+    string_columns : list of str or None
+        The columns of string_nets.tab that will be used
+    batch_size : int, default 32
+        Batch size
+    shuffle : bool, default False
+        whether to shuffle the data on each epoch
+    include_homology : bool, default True
+        whether to include homology as a task
+    include_biogrid : bool, default True
+        whether to include BIOGRID as a task
+    negative_sampling : bool, optional, default `False`
+        This applies only to string columns. if `True`, a random negative sampling will be used to balance each
+        of the columns indicated by `string_columns`.
+    combine_string_columns : bool, default False
+        This applies only to string columns. If `True`
+    """
+    def __init__(self,
+                 data_directory,
+                 string_columns: Union[List[str], None],
                  batch_size=32,
                  shuffle = False,
                  include_homology=True,
                  include_biogrid=True,
                  negative_sampling = False,
                  combine_string_columns = False):
-        """
-        Loads and serves a dataset from a directory containing compatible files:
-        - interpro.tab
-        - homology.tab
-        - bp-ss.tab
-        - string_nets.tab
-
-        Parameters
-        ----------
-        data_directory : Path
-            The directory that must contain all files to be loaded
-        string_columns : list of str
-            The columns of string_nets.tab that will be used
-        batch_size : int, default 32
-            Batch size
-        shuffle : bool, default False
-            whether to shuffle the data on each epoch
-        include_homology : bool, default True
-            whether to include homology as a task
-        include_biogrid : bool, default True
-            whether to include BIOGRID as a task
-        negative_sampling : bool, optional, default `False`
-            This applies only to string columns. if `True`, a random negative sampling will be used to balance each
-            of the columns indicated by `string_columns`.
-        combine_string_columns : bool, default False
-            This applies only to string columns. If `True`
-        """
         self.string_columns = string_columns
         self.include_string = string_columns is not None
         self.batch_size = batch_size
@@ -172,10 +254,13 @@ class FastMultitaskSemanticSimilarityDataset:
         self.include_biogrid = include_biogrid
         self.negative_sampling = negative_sampling
         self.combine_string_columns = combine_string_columns
-        self.interpro_df, self.multitask_dataset = load_multiclass_dataset(
-            data_directory, self.string_columns,
-            self.include_homology, self.include_biogrid,
-            self.negative_sampling, self.combine_string_columns
+        self.interpro_df, self.multitask_dataset = load_dataset(
+            data_directory,
+            string_columns=self.string_columns,
+            include_homology=self.include_homology,
+            include_biogrid=self.include_biogrid,
+            negative_sampling=self.negative_sampling,
+            combine_string_columns=self.combine_string_columns
         )
         self.string_tasks = ["STRING"] if self.combine_string_columns else self.string_columns
         self.dataset_len = self.multitask_dataset.shape[0]
@@ -206,27 +291,6 @@ class FastMultitaskSemanticSimilarityDataset:
                 ret.append(torch.from_numpy(value[:, np.newaxis].astype(np.float32)))
         return *ret,
 
-    def __len__(self):
-        return self.n_batches
-
-    def __iter__(self):
-        if self.shuffle:
-            self.indices = torch.randperm(self.dataset_len)
-        else:
-            self.indices = None
-        self.i = 0
-        return self
-
-    def __next__(self):
-        if self.i >= self.dataset_len:
-            raise StopIteration
-        if self.indices is not None:
-            indices = self.indices[self.i: self.i+self.batch_size]
-            batch = self.get_tensors_(indices)
-        else:
-            batch = self.get_tensors_(np.arange(self.i, self.i+self.batch_size))
-        self.i += self.batch_size
-        return batch
 
 class MultiTaskSemanticSimilarityDataset(Dataset):
 
@@ -253,10 +317,10 @@ class MultiTaskSemanticSimilarityDataset(Dataset):
         self.string_columns = string_columns
         self.negative_sampling = negative_sampling
         self.combine_string_columns = combine_string_columns
-        self.interpro_dict, self.multitask_dataset = load_multiclass_dataset(data_directory,
-                                                     self.string_columns,
-                                                     self.negative_sampling,
-                                                     self.combine_string_columns)
+        self.interpro_dict, self.multitask_dataset = load_dataset(data_directory,
+                                                                  self.string_columns,
+                                                                  self.negative_sampling,
+                                                                  self.combine_string_columns)
 
     def __len__(self):
         return self.multitask_dataset.shape[0]

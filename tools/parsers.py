@@ -3,7 +3,7 @@ import numpy as np
 import pandas as pd
 import os
 from typing import Tuple
-
+from scipy import sparse
 
 def extract_uniprot_accession(protein_id: str) -> str:
     """
@@ -69,11 +69,23 @@ class InterProParser(object):
     def _parse_to_dataset(self) -> pd.DataFrame:
         df = self._parse_to_pandas()
         data = df[['Protein accession', 'InterPro accession']].copy()
+        condition = data["InterPro accession"] != "-"
+        data = data[condition].reset_index(drop=True)
         data['value'] = 1
-        X = (data.drop_duplicates()
-                    .pivot('Protein accession', 'InterPro accession', 'value')
-                    .fillna(0).reset_index())
-        return X[['Protein accession'] + X.columns[~X.columns.isin(['Protein accession'])][1:].tolist()]
+        protein_index = (pd.DataFrame(enumerate(np.sort(data["Protein accession"].unique())), 
+                                      columns=["protein idx", "Protein accession"])
+                           .set_index("Protein accession"))
+        interpro_index = (pd.DataFrame(enumerate(np.sort(data["InterPro accession"].unique())), 
+                                      columns=["interpro idx", "InterPro accession"])
+                            .set_index("InterPro accession"))
+        data = (data.merge(protein_index, 
+                          left_on="Protein accession", 
+                          right_index=True)
+                    .merge(interpro_index, 
+                           left_on="InterPro accession", 
+                           right_index=True))
+        M = sparse.coo_matrix((data["value"], (data["protein idx"].values, data["interpro idx"].values)))
+        return pd.DataFrame(data=M.toarray(), index=protein_index.index, columns=interpro_index.index).reset_index()
 
     def _parse_to_numpy(self) -> Tuple:
         X = self._parse_to_dataset()
@@ -138,7 +150,7 @@ class SemanticSimilarityParser(object):
                 continue
             if not header_read:
                 header_read = True
-                proteins = line.split('\t')[:-1]
+                proteins = line.strip().split('\t')
                 continue
             parts = line.strip().split('\t')
             if parts[0] not in proteins:

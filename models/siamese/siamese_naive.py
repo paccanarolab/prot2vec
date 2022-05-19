@@ -21,11 +21,14 @@ class SiameseSimilarity(nn.Module):
 
 class SiameseSimilarityNet(SiameseSimilarity):
 
-    def __init__(self, activation=SiameseSimilarity.DEFAULT_ACTIVATION, dim_first_hidden_layer=1024):
+    def __init__(self,
+                 num_interpro_features,
+                 activation=SiameseSimilarity.DEFAULT_ACTIVATION,
+                 dim_first_hidden_layer=1024):
         super(SiameseSimilarityNet, self).__init__(activation)
         self._d1 = dim_first_hidden_layer
         self.prot2vec = nn.Sequential(
-            nn.Linear(7098, self._d1),
+            nn.Linear(num_interpro_features, self._d1),
             # nn.BatchNorm1d(self._d1),
             self.activation(),
             nn.Linear(self._d1, self._d1//2),
