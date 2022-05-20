@@ -52,8 +52,10 @@ def run():
     # ss_bp_test = SemanticSimilarityDatasetDevice('E:/prot2vec/83333/test_data/',
     #                                              device, 'E:/prot2vec/83333/test_data/tensor.pt')
 
-    for length, d in zip(['train', 'validation', 'test'], [ss_bp_train, ss_bp_val, ss_bp_test]):
-        print(length, d.dataset_len)
+    for split_name, d in zip(['train', 'validation', 'test'], [ss_bp_train, ss_bp_val, ss_bp_test]):
+        print(split_name, d.dataset_len)
+        print(split_name, d.interpro_df.shape)
+
 
     model_classes = [
         SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
@@ -98,7 +100,7 @@ def run():
                 validation = progress.add_task(f"[cyan]Validation [{epoch+1}]",
                                                total=len(ss_bp_val), progress_type="validation")
 
-                for batch_num, (p1, p2, sim) in enumerate(ss_bp_train):
+                for p1, p2, sim in ss_bp_train:
                     # forward
                     p1 = p1.to(device)
                     p2 = p2.to(device)
@@ -119,7 +121,7 @@ def run():
                 val_running_loss = 0.0
                 with torch.no_grad():
                     model.eval()
-                    for batch_nume, (p1, p2, sim) in ss_bp_val:
+                    for p1, p2, sim in ss_bp_val:
                         p1 = p1.to(device)
                         p2 = p2.to(device)
                         sim = sim.to(device)

@@ -141,10 +141,11 @@ class FastDataset(metaclass=ABCMeta):
 
     dataset_len : int = abstract_attribute()
     batch_size : int = abstract_attribute()
+    n_batches: int = abstract_attribute()
     shuffle : bool = abstract_attribute()
 
     def __len__(self):
-        return self.batch_size
+        return self.n_batches
 
     def __iter__(self):
         if self.shuffle:
