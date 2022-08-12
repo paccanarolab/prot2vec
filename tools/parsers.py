@@ -70,7 +70,7 @@ class InterProParser(object):
         df = self._parse_to_pandas()
         data = df[['Protein accession', 'InterPro accession']].copy()
         condition = data["InterPro accession"] != "-"
-        data = data[condition].reset_index(drop=True)
+        data = data[condition].drop_duplicates().reset_index(drop=True)
         data['value'] = 1
         protein_index = (pd.DataFrame(enumerate(np.sort(data["Protein accession"].unique())), 
                                       columns=["protein idx", "Protein accession"])

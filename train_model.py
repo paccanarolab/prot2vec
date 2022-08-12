@@ -18,7 +18,7 @@ def run():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using {device} device')
 
-    config = Configuration.load_run("run-all_goa.ini")
+    config = Configuration.load_run("run-all_cafa3-cc.ini")
 
     batch_size_train = config["model"]["batch_size_train"]
     batch_size_val = config["model"]["batch_size_val"]
@@ -100,7 +100,7 @@ def run():
                 validation = progress.add_task(f"[cyan]Validation [{epoch+1}]",
                                                total=len(ss_bp_val), progress_type="validation")
 
-                for p1, p2, sim in ss_bp_train:
+                for curr_batch, (p1, p2, sim) in enumerate(ss_bp_train):
                     # forward
                     p1 = p1.to(device)
                     p2 = p2.to(device)
@@ -114,6 +114,7 @@ def run():
                     optimizer.step()
                     running_loss += loss.item()
                     progress.advance(training)
+
                 n = len(ss_bp_train)
                 avg_train_loss = running_loss / n
                 train_losses.append(avg_train_loss)
@@ -121,7 +122,7 @@ def run():
                 val_running_loss = 0.0
                 with torch.no_grad():
                     model.eval()
-                    for p1, p2, sim in ss_bp_val:
+                    for num_batch, (p1, p2, sim) in enumerate(ss_bp_val):
                         p1 = p1.to(device)
                         p2 = p2.to(device)
                         sim = sim.to(device)
@@ -136,7 +137,7 @@ def run():
                       .format(epoch + 1, num_epochs, avg_train_loss, avg_val_loss))
                 if avg_val_loss < best_val_loss:
                     best_val_loss = avg_val_loss
-                    save_checkpoint(save_name, model, optimizer, best_val_loss)
+                    save_checkpoint(save_filename_model, model, optimizer, best_val_loss)
 
                 progress.tasks[training].visible = False
                 progress.tasks[validation].visible = False

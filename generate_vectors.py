@@ -3,7 +3,7 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 import pandas as pd
-from tools.datasets import SemanticSimilarityDataset
+from tools.datasets import FastSemanticSimilarityDataset
 from models import (SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
                     SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron,
                     SiameseSimilarityMultiTask)
@@ -14,39 +14,66 @@ from rich.progress import track
 from Utils import Configuration
 import os
 
-def extract_proteins_representation(device, model, dataset, set_label, data):
+def extract_proteins_representation_dict(device, model, dataset, set_label, data):
     for prot, numpy_repr in track(dataset.interpro_dict.items(),
                                   description=f'processing {set_label} set...'):
         p = torch.from_numpy(numpy_repr.astype(np.float32)).to(device).reshape(1, -1)
-        v = F.normalize(model.prot2vec(p))
+        v = model.prot2vec(p)
         data['protein'].append(prot)
         data['vector'].append(v.flatten().cpu().detach().numpy())
         data['set'].append(set_label)
 
+def extract_proteins_representation(device, model, dataset, set_label, data):
+    proteins = dataset.interpro_df.index.values
+    n = 50
+    for i in range(0, len(proteins), n):
+        ps = proteins[i:i + n]
+        ip = dataset.interpro_df.loc[proteins[i:i + n]].values
+        ip = torch.from_numpy(ip.astype(np.float32)).to(device)
+        vs = model.prot2vec(ip)
+        for j, p in enumerate(ps):
+            data["protein"].append(p)
+            data["vector"].append(vs[j].flatten().cpu().detach().numpy())
+            data["set"].append(set_label)
+
+
 def run():
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using {device} device')
-    config = Configuration.load_run("run-test.ini")
+    config = Configuration.load_run("run-all_cafa3-cc.ini")
 
     dir_train = config["dataset"]["dir_train"]
     dir_val = config["dataset"]["dir_val"]
     dir_test = config["dataset"]["dir_test"]
 
+    batch_size_train = config["model"]["batch_size_train"]
+    batch_size_val = config["model"]["batch_size_val"]
+    batch_size_test = config["model"]["batch_size_test"]
+
     print('Loading training set...')
-    ss_bp_train = SemanticSimilarityDataset(dir_train)
+    ss_bp_train = FastSemanticSimilarityDataset(dir_train,
+                                                batch_size=batch_size_train,
+                                                shuffle=True)
     print('Loading validation set...')
-    ss_bp_val = SemanticSimilarityDataset(dir_val)
+    ss_bp_val = FastSemanticSimilarityDataset(dir_val,
+                                              batch_size=batch_size_val,
+                                              shuffle=True)
     print('Loading test set...')
-    ss_bp_test = SemanticSimilarityDataset(dir_test)
+    ss_bp_test = FastSemanticSimilarityDataset(dir_test,
+                                               batch_size=batch_size_test,
+                                               shuffle=True)
 
     model_classes = [
         SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
         SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron
     ]
-    model_classes = [SiameseSimilarityMultiTask]
+    model_classes = [SiameseSimilarityNet]
 
     activations = ['relu', 'sigmoid']
     activations = ['sigmoid']
+
+    num_interpro_features = ss_bp_test.interpro_df.shape[1]
+
     num_epochs = config["training"]["num_epochs"]
 
     negative_sampling = config["dataset"]["negative_sampling"]
@@ -74,7 +101,8 @@ def run():
                                 dim_first_hidden_layer=config["model"]["dim_first_hidden_layer"],
                                 tasks_columns=secondary_tasks).to(device)
         else:
-            model = model_class(activation=activation,
+            model = model_class(num_interpro_features,
+                                activation=activation,
                                 dim_first_hidden_layer=config["model"]["dim_first_hidden_layer"]
                                 ).to(device)
         # this must be the same as the one used in train_model.py
@@ -93,9 +121,9 @@ def run():
         model.eval()
         with torch.no_grad():
             data = {'protein':[], 'vector':[], 'set':[]}
+            extract_proteins_representation(device, model, ss_bp_test, 'test', data)
             extract_proteins_representation(device, model, ss_bp_train, 'train', data)
             extract_proteins_representation(device, model, ss_bp_val, 'validation', data)
-            extract_proteins_representation(device, model, ss_bp_test, 'test', data)
             df = pd.DataFrame(data)
 
         representation_file = os.path.join(
