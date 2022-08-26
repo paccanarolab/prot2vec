@@ -16,7 +16,7 @@ class SemanticSimilarityDataset(Dataset):
         interpro_dataset = pd.read_table(os.path.join(data_directory, 'interpro.tab'))
         ip_features = interpro_dataset.columns[~interpro_dataset.columns.isin(['Protein accession'])].to_numpy()
         self.interpro_dict = {}
-        self.ss_dataset = pd.read_table(os.path.join(data_directory, 'bp-ss.tab'))
+        self.ss_dataset = pd.read_table(os.path.join(data_directory, 'semantic-similarity.tab'))
         for protein in track(interpro_dataset['Protein accession'].unique(), description='Building InterPro dictionary'):
             self.interpro_dict[protein] = interpro_dataset[
                 interpro_dataset['Protein accession'] == protein][ip_features].to_numpy().flatten()
@@ -43,11 +43,11 @@ def load_dataset(data_directory,
     Loads and serves a dataset from a directory containing compatible files:
     - interpro.tab
     - homology.tab
-    - bp-ss.tab
+    - semantic-similarity.tab
     - string_nets.tab
 
     Depending on the arguments passed to this function, files other than `interpro.tab` and
-    `bp-ss.tab` will become optional
+    `semantic-similarity.tab` will become optional
 
     Parameters
     ----------
@@ -76,7 +76,7 @@ def load_dataset(data_directory,
         biogrid_dataset.columns = ["protein1", "protein2", "BIOGRID"]
     include_string = string_columns is not None
     ip_features = interpro_dataset.columns[~interpro_dataset.columns.isin(['Protein accession'])].to_numpy()
-    ss_dataset = pd.read_table(os.path.join(data_directory, 'bp-ss.tab'), names=["protein1", "protein2", "similarity"])
+    ss_dataset = pd.read_table(os.path.join(data_directory, 'semantic-similarity.tab'), names=["protein1", "protein2", "similarity"])
     if include_string:
         string_nets = pd.read_table(os.path.join(data_directory, "string_nets.tab"))
         string_nets = string_nets[["protein1", "protein2"] + string_columns]
@@ -175,7 +175,7 @@ class FastSemanticSimilarityDataset(FastDataset):
     """
     Loads and serves a dataset from a directory containing compatible files:
     - interpro.tab
-    - bp-ss.tab
+    - semantic-similarity.tab
 
     Parameters
     ----------
@@ -215,7 +215,7 @@ class FastMultitaskSemanticSimilarityDataset(FastDataset):
     Loads and serves a dataset from a directory containing compatible files:
     - interpro.tab
     - homology.tab
-    - bp-ss.tab
+    - semantic-similarity.tab
     - string_nets.tab
 
     Parameters
@@ -300,7 +300,7 @@ class MultiTaskSemanticSimilarityDataset(Dataset):
         Loads and serves a dataset from a directory containing compatible files:
         - interpro.tab
         - homology.tab
-        - bp-ss.tab
+        - semantic-similarity.tab
         - string_nets.tab
 
         Parameters
@@ -353,7 +353,7 @@ class SemanticSimilarityOnDeviceDataset(Dataset):
         interpro_dataset = pd.read_csv(os.path.join(data_directory, 'interpro.tab'), sep='\t')
         ip_features = interpro_dataset.columns[~interpro_dataset.columns.isin(['Protein accession'])].to_numpy()
         self.interpro_dict = {}
-        self.ss_dataset = pd.read_csv(os.path.join(data_directory, 'bp-ss.tab'), sep='\t')
+        self.ss_dataset = pd.read_csv(os.path.join(data_directory, 'semantic-similarity.tab'), sep='\t')
         for protein in track(interpro_dataset['Protein accession'].unique(),
                              description='Building InterPro dictionary'):
             self.interpro_dict[protein] = torch.from_numpy(
@@ -388,7 +388,7 @@ class SparseSemanticSimilarityDatasetDevice(Dataset):
             interpro_dataset = pd.read_csv(os.path.join(data_directory, 'interpro.tab'), sep='\t')
             ip_features = interpro_dataset.columns[~interpro_dataset.columns.isin(['Protein accession'])].to_numpy()
             interpro_dict = {}
-            ss_dataset = pd.read_csv(os.path.join(data_directory, 'bp-ss.tab'), sep='\t')
+            ss_dataset = pd.read_csv(os.path.join(data_directory, 'semantic-similarity.tab'), sep='\t')
             for protein in track(interpro_dataset['Protein accession'].unique(),
                                  description='Building InterPro dictionary'):
                 interpro_dict[protein] = interpro_dataset[

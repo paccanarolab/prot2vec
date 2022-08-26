@@ -37,10 +37,10 @@ def extract_proteins_representation(device, model, dataset, set_label, data):
             data["set"].append(set_label)
 
 
-def run():
+def run(run_config):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f'Using {device} device')
-    config = Configuration.load_run("run-all_cafa3-cc.ini")
+    config = Configuration.load_run(run_config)
 
     dir_train = config["dataset"]["dir_train"]
     dir_val = config["dataset"]["dir_val"]
@@ -135,4 +135,11 @@ def run():
 
 
 if __name__ == '__main__':
-    run()
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Generate vectors from a prot2vec model.")
+    parser.add_argument("--run-config", "--c",
+                        help="Path to the Configuration file",
+                        required=True)
+    args = parser.parse_args()
+    run(args.run_config)
