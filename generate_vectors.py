@@ -50,18 +50,23 @@ def run(run_config):
     batch_size_val = config["model"]["batch_size_val"]
     batch_size_test = config["model"]["batch_size_test"]
 
+    interpro_pca = config["dataset"]["interpro_pca"]
+
     print('Loading training set...')
     ss_bp_train = FastSemanticSimilarityDataset(dir_train,
                                                 batch_size=batch_size_train,
-                                                shuffle=True)
+                                                shuffle=True, interpro_pca=interpro_pca, 
+                                                ignore_pairwise=True)
     print('Loading validation set...')
     ss_bp_val = FastSemanticSimilarityDataset(dir_val,
                                               batch_size=batch_size_val,
-                                              shuffle=True)
+                                              shuffle=True, interpro_pca=interpro_pca,
+                                              ignore_pairwise=True)
     print('Loading test set...')
     ss_bp_test = FastSemanticSimilarityDataset(dir_test,
                                                batch_size=batch_size_test,
-                                               shuffle=True)
+                                               shuffle=True, interpro_pca=interpro_pca, 
+                                               ignore_pairwise=True)
 
     model_classes = [
         SiameseSimilarityNet, SiameseSimilarityPerceptronNet,

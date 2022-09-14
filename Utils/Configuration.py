@@ -61,6 +61,8 @@ def load_run(run_config):
         ],
         "str":[
             ("model", "alias", "infer"),
+            ("dataset", "interpro_filename", "interpro.tab"),
+            ("dataset", "semantic_similarity_filename", "semantic-similarity.tab"),
         ],
         "list":[
             ("dataset", "string_columns", [
@@ -78,6 +80,7 @@ def load_run(run_config):
             ("dataset", "combine_string", True),
             ("dataset", "include_homology", True),
             ("dataset", "include_biogrid", True),
+            ("dataset", "interpro_pca", False),
             ("training", "output_debug", False),
         ]
     }

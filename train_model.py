@@ -14,33 +14,42 @@ import pickle
 import os
 
 
-def run(run_config):
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+def run(run_config, gpu_device, train_only):
+    # this is a best effort thing, the user must know the name of the device
+    # otherwise this script will simply fail
+    device = gpu_device if torch.cuda.is_available() else 'cpu'
     print(f'Using {device} device')
 
     config = Configuration.load_run(run_config)
 
     batch_size_train = config["model"]["batch_size_train"]
     batch_size_val = config["model"]["batch_size_val"]
-    batch_size_test = config["model"]["batch_size_test"]
 
     dir_train = config["dataset"]["dir_train"]
     dir_val = config["dataset"]["dir_val"]
-    dir_test = config["dataset"]["dir_test"]
+
+    interpro_pca = config["dataset"]["interpro_pca"]
+    interpro_filename = config["dataset"]["interpro_filename"]
+    semantic_similarity_filename = config["dataset"]["semantic_similarity_filename"]
 
     print('Loading training set...')
     ss_bp_train = FastSemanticSimilarityDataset(dir_train,
                                                 batch_size=batch_size_train,
-                                                shuffle=True)
-    print('Loading validation set...')
-    ss_bp_val = FastSemanticSimilarityDataset(dir_val,
-                                              batch_size=batch_size_val,
-                                              shuffle=True)
-    print('Loading test set...')
-    ss_bp_test = FastSemanticSimilarityDataset(dir_test,
-                                               batch_size=batch_size_test,
-                                               shuffle=True)
+                                                shuffle=True,
+                                                interpro_pca=interpro_pca,
+                                                interpro_filename=interpro_filename, 
+                                                semantic_similarity_filename=semantic_similarity_filename)
+    print("train", ss_bp_train.dataset_len)
+    print("train", ss_bp_train.interpro_df.shape)
 
+    if not train_only:
+        print('Loading validation set...')
+        ss_bp_val = FastSemanticSimilarityDataset(dir_val,
+                                                  batch_size=batch_size_val,
+                                                  shuffle=True,
+                                                  interpro_pca=interpro_pca,
+                                                  interpro_filename=interpro_filename, 
+                                                  semantic_similarity_filename=semantic_similarity_filename)
     # ss_bp_train = SemanticSimilarityOnDeviceDataset('../83333/train_data/', device)
     # ss_bp_val = SemanticSimilarityOnDeviceDataset('../83333/val_data/', device)
     # ss_bp_test = SemanticSimilarityOnDeviceDataset('../83333/test_data/', device)
@@ -52,10 +61,8 @@ def run(run_config):
     # ss_bp_test = SemanticSimilarityDatasetDevice('E:/prot2vec/83333/test_data/',
     #                                              device, 'E:/prot2vec/83333/test_data/tensor.pt')
 
-    for split_name, d in zip(['train', 'validation', 'test'], [ss_bp_train, ss_bp_val, ss_bp_test]):
-        print(split_name, d.dataset_len)
-        print(split_name, d.interpro_df.shape)
-
+        print("validation", ss_bp_val.dataset_len)
+        print("validation", ss_bp_val.interpro_df.shape)
 
     model_classes = [
         SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
@@ -97,8 +104,9 @@ def run(run_config):
                 model.train()
                 training = progress.add_task(f"[magenta]Training [{epoch+1}]",
                                              total=len(ss_bp_train), progress_type="training")
-                validation = progress.add_task(f"[cyan]Validation [{epoch+1}]",
-                                               total=len(ss_bp_val), progress_type="validation")
+                if not train_only:
+                    validation = progress.add_task(f"[cyan]Validation [{epoch+1}]",
+                                                   total=len(ss_bp_val), progress_type="validation")
 
                 for curr_batch, (p1, p2, sim) in enumerate(ss_bp_train):
                     # forward
@@ -119,28 +127,32 @@ def run(run_config):
                 avg_train_loss = running_loss / n
                 train_losses.append(avg_train_loss)
 
-                val_running_loss = 0.0
-                with torch.no_grad():
-                    model.eval()
-                    for num_batch, (p1, p2, sim) in enumerate(ss_bp_val):
-                        p1 = p1.to(device)
-                        p2 = p2.to(device)
-                        sim = sim.to(device)
-                        outputs = model(p1, p2)
-                        loss = criterion(outputs, sim)
-                        val_running_loss += loss.item()
-                        progress.advance(validation)
-                avg_val_loss = val_running_loss / len(ss_bp_val)
-                val_losses.append(avg_val_loss)
+                if not train_only:
+                    val_running_loss = 0.0
+                    with torch.no_grad():
+                        model.eval()
+                        for num_batch, (p1, p2, sim) in enumerate(ss_bp_val):
+                            p1 = p1.to(device)
+                            p2 = p2.to(device)
+                            sim = sim.to(device)
+                            outputs = model(p1, p2)
+                            loss = criterion(outputs, sim)
+                            val_running_loss += loss.item()
+                            progress.advance(validation)
+                    avg_val_loss = val_running_loss / len(ss_bp_val)
+                    val_losses.append(avg_val_loss)
 
-                print('Epoch [{}/{}],Train Loss: {:.4f}, Valid Loss: {:.8f}'
-                      .format(epoch + 1, num_epochs, avg_train_loss, avg_val_loss))
-                if avg_val_loss < best_val_loss:
-                    best_val_loss = avg_val_loss
-                    save_checkpoint(save_filename_model, model, optimizer, best_val_loss)
+                    print('Epoch [{}/{}],Train Loss: {:.4f}, Valid Loss: {:.8f}'
+                          .format(epoch + 1, num_epochs, avg_train_loss, avg_val_loss))
+                    if avg_val_loss < best_val_loss:
+                        best_val_loss = avg_val_loss
+                        save_checkpoint(save_filename_model, model, optimizer, best_val_loss)
+                else:
+                        save_checkpoint(save_filename_model, model, optimizer, -1)
 
                 progress.tasks[training].visible = False
-                progress.tasks[validation].visible = False
+                if not train_only:
+                    progress.tasks[validation].visible = False
                 progress.advance(epochs)
 
         # plotting of training and validation loss
@@ -177,5 +189,10 @@ if __name__ == '__main__':
     parser.add_argument("--run-config", "--c",
                         help="Path to the run configuration file",
                         required=True)
+    parser.add_argument("--gpu-device", "--g",
+                        help="The name of the gpu device, `cuda` by default",
+                        default="cuda",
+                        required=False)
+    parser.add_argument("--train-only", "--t", action="store_true")
     args = parser.parse_args()
-    run(args.run_config)
+    run(args.run_config, args.gpu_device, args.train_only)

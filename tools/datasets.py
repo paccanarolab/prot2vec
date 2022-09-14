@@ -7,7 +7,7 @@ import os
 from rich.progress import track
 from abc import abstractmethod
 from better_abc import ABCMeta, abstract_attribute
-from typing import Union, List
+from typing import Union, List, Tuple
 
 
 class SemanticSimilarityDataset(Dataset):
@@ -34,11 +34,15 @@ class SemanticSimilarityDataset(Dataset):
 
 
 def load_dataset(data_directory,
-                 string_columns: Union[str, None] = None,
+                 string_columns: Union[List[str], None] = None,
                  include_homology=True,
                  include_biogrid=True,
                  negative_sampling=False,
-                 combine_string_columns=True):
+                 combine_string_columns=True, 
+                 interpro_pca=False,
+                 ignore_pairwise=False, 
+                 interpro_filename="interpro.tab", 
+                 semantic_similarity_filename="semantic-similarity.tab") -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Loads and serves a dataset from a directory containing compatible files:
     - interpro.tab
@@ -64,10 +68,16 @@ def load_dataset(data_directory,
         of the columns indicated by `string_columns`.
     combine_string_columns : bool, default False
         This applies only to string columns. If `True`
+    interpro_pca : bool, default False
+        If `True`, load a pickled file instead of the usual table, the pickled file contains the PCA representaiton
+        of the InterPro features
     """
     interpro_dict = {}
 
-    interpro_dataset = pd.read_table(os.path.join(data_directory, 'interpro.tab'))
+    if interpro_pca:
+        interpro_dataset = pd.read_pickle(os.path.join(data_directory, interpro_filename))
+    else:
+        interpro_dataset = pd.read_table(os.path.join(data_directory, interpro_filename))
     if include_homology:
         homology_dataset = pd.read_table(os.path.join(data_directory, 'homology.tab'))
         homology_dataset.columns = ["protein1", "protein2", "homology"]
@@ -76,29 +86,32 @@ def load_dataset(data_directory,
         biogrid_dataset.columns = ["protein1", "protein2", "BIOGRID"]
     include_string = string_columns is not None
     ip_features = interpro_dataset.columns[~interpro_dataset.columns.isin(['Protein accession'])].to_numpy()
-    ss_dataset = pd.read_table(os.path.join(data_directory, 'semantic-similarity.tab'), names=["protein1", "protein2", "similarity"])
-    if include_string:
-        string_nets = pd.read_table(os.path.join(data_directory, "string_nets.tab"))
-        string_nets = string_nets[["protein1", "protein2"] + string_columns]
+    if ignore_pairwise:
+        pairwise_dataset = pd.DataFrame()
+    else:
+        ss_dataset = pd.read_table(os.path.join(data_directory, semantic_similarity_filename), names=["protein1", "protein2", "similarity"])
+        if include_string:
+            string_nets = pd.read_table(os.path.join(data_directory, "string_nets.tab"))
+            string_nets = string_nets[["protein1", "protein2"] + string_columns]
 
-    pairwise_dataset = ss_dataset
-    if include_string:
-        pairwise_dataset = pairwise_dataset.merge(string_nets, how="left")
-    if include_homology:
-        pairwise_dataset = pairwise_dataset.merge(homology_dataset, how="left")
-    if include_biogrid:
-        pairwise_dataset = pairwise_dataset.merge(biogrid_dataset, how="left")
+        pairwise_dataset = ss_dataset
+        if include_string:
+            pairwise_dataset = pairwise_dataset.merge(string_nets, how="left")
+        if include_homology:
+            pairwise_dataset = pairwise_dataset.merge(homology_dataset, how="left")
+        if include_biogrid:
+            pairwise_dataset = pairwise_dataset.merge(biogrid_dataset, how="left")
 
-    if include_string and combine_string_columns:
-        pairwise_dataset["STRING"] = pairwise_dataset[string_columns].mean(axis=1)
-        keep = [c for c in pairwise_dataset if c not in string_columns]
-        pairwise_dataset = pairwise_dataset[keep]
+        if include_string and combine_string_columns:
+            pairwise_dataset["STRING"] = pairwise_dataset[string_columns].mean(axis=1)
+            keep = [c for c in pairwise_dataset if c not in string_columns]
+            pairwise_dataset = pairwise_dataset[keep]
 
-    for c in pairwise_dataset.columns:
-        if c not in ["protein1", "protein2"]:
-            m, M = pairwise_dataset[c].min(), pairwise_dataset[c].max()
-            R = M - m
-            pairwise_dataset[c] = ((pairwise_dataset[c] - m) / R).fillna(0)
+        for c in pairwise_dataset.columns:
+            if c not in ["protein1", "protein2"]:
+                m, M = pairwise_dataset[c].min(), pairwise_dataset[c].max()
+                R = M - m
+                pairwise_dataset[c] = ((pairwise_dataset[c] - m) / R).fillna(0)
 
     for protein in track(interpro_dataset['Protein accession'].unique(), description='Building InterPro dictionary'):
         interpro_dict[protein] = interpro_dataset[
@@ -106,7 +119,7 @@ def load_dataset(data_directory,
 
     interpro_df = pd.DataFrame(interpro_dict).T
 
-    if negative_sampling:
+    if negative_sampling and not ignore_pairwise:
         # TODO: remove the seed
         rng = np.random.default_rng(0)
         #                                                         these columns don't require negative sampling
@@ -129,7 +142,7 @@ def load_dataset(data_directory,
             pairwise_dataset["ind_homology"] = True
         pairwise_dataset["ind_similarity"] = True
 
-    return interpro_df, pairwise_dataset
+    return (interpro_df, pairwise_dataset)
 
 
 # The Fast Datasets where implemented following this dicussion
@@ -189,13 +202,19 @@ class FastSemanticSimilarityDataset(FastDataset):
     def __init__(self,
                  data_directory,
                  batch_size=32,
-                 shuffle=False):
+                 shuffle=False,
+                 interpro_pca=False, 
+                 ignore_pairwise=False, 
+                 interpro_filename="interpro.tab",
+                 semantic_similarity_filename="semantic-similarity.tab"):
         self.batch_size = batch_size
         self.shuffle = shuffle
         self.interpro_df, self.pairwise_dataset = load_dataset(
             data_directory, string_columns=None,
             include_biogrid=False, include_homology=False,
-            negative_sampling=False, combine_string_columns=False
+            negative_sampling=False, combine_string_columns=False,
+            interpro_pca=interpro_pca, ignore_pairwise=ignore_pairwise, 
+            interpro_filename=interpro_filename, semantic_similarity_filename=semantic_similarity_filename
         )
         self.dataset_len = self.pairwise_dataset.shape[0]
         n_batches, remainder = divmod(self.dataset_len, self.batch_size)
