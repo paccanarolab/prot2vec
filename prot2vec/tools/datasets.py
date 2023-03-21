@@ -4,11 +4,14 @@ from scipy import sparse
 import torch
 from torch.utils.data import Dataset, DataLoader
 import os
+import logging
 from rich.progress import track
 from abc import abstractmethod
 from better_abc import ABCMeta, abstract_attribute
 from typing import Union, List, Tuple
+from pathlib import Path
 
+log = logging.getLogger(__name__)
 
 class SemanticSimilarityDataset(Dataset):
 
@@ -40,6 +43,7 @@ def load_dataset(data_directory,
                  negative_sampling=False,
                  combine_string_columns=True, 
                  interpro_pca=False,
+                 num_pca = -1,
                  ignore_pairwise=False, 
                  interpro_filename="interpro.tab", 
                  semantic_similarity_filename="semantic-similarity.tab") -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -71,11 +75,25 @@ def load_dataset(data_directory,
     interpro_pca : bool, default False
         If `True`, load a pickled file instead of the usual table, the pickled file contains the PCA representaiton
         of the InterPro features
+    num_pca : int, default -1
+        Only relevant when `intrerpro_pca` is `True`. This number can be used to limit the number of principal 
+        components that will be kept for training. If the number if higher than the number of features in the 
+        `interpro_filename`, the program will fail.
+    ignore_pairwise : bool, default False
+        If True, the semantic similarity file will not be read and an empty pandas DataFrame will be returned instead.
+        Only useful when using the dataset wrapper to generate vectors.
+    interpro_filename : Path, default "interpro.tab"
+        The name of the interpro file that will be loaded.
+    semantic_similarity_filename : Path, default "semantic-similarity.tab"
+        The name of the semantic similarity file that will be loaded.
     """
     interpro_dict = {}
 
     if interpro_pca:
         interpro_dataset = pd.read_pickle(os.path.join(data_directory, interpro_filename))
+        if num_pca != -1:
+            ip_features = interpro_dataset.columns[~interpro_dataset.columns.isin(['Protein accession'])].to_numpy()
+            interpro_dataset = interpro_dataset[["Protein accession"] + ip_features[:num_pca].tolist()]
     else:
         interpro_dataset = pd.read_table(os.path.join(data_directory, interpro_filename))
     if include_homology:
@@ -204,6 +222,7 @@ class FastSemanticSimilarityDataset(FastDataset):
                  batch_size=32,
                  shuffle=False,
                  interpro_pca=False, 
+                 num_pca=-1,
                  ignore_pairwise=False, 
                  interpro_filename="interpro.tab",
                  semantic_similarity_filename="semantic-similarity.tab"):
@@ -213,7 +232,7 @@ class FastSemanticSimilarityDataset(FastDataset):
             data_directory, string_columns=None,
             include_biogrid=False, include_homology=False,
             negative_sampling=False, combine_string_columns=False,
-            interpro_pca=interpro_pca, ignore_pairwise=ignore_pairwise, 
+            interpro_pca=interpro_pca, num_pca=num_pca, ignore_pairwise=ignore_pairwise, 
             interpro_filename=interpro_filename, semantic_similarity_filename=semantic_similarity_filename
         )
         self.dataset_len = self.pairwise_dataset.shape[0]
@@ -450,3 +469,114 @@ class SparseSemanticSimilarityDatasetDevice(Dataset):
 
     def __getitem__(self, item):
         return self._P1[item], self._P2[item], self._y[item]
+
+def build_dataset(features_df:pd.DataFrame,
+                  function_assignment_filename:Union[str, Path],
+                  goterms: Union[str, List[str]]="all") -> Tuple:
+    
+    """
+    Builds a scikit-learn style dataset from pre-processed files
+
+    Parameters
+    ----------
+    features_df: pd.DataFrame
+        Features to use per protein
+    function_assignment_filename : Path
+        File with GO terms assigned to proteins, this should be a two column file in 
+        TSV format.
+    goterms : str or list of str, default "all"
+        A list of GO terms to consider for building the dataset, if "all", then all
+        goterns in `function_assignment` will be considered.
+    fmt : str, default "pkl"
+        The format of the `features_filename` file. Can be "pkl" or "tsv"
+
+    Returns
+    -------
+    X : array (n_proteins, n_features)
+        features
+    y : array (n_proteins, n_terms)
+        labels (empyty if `function_assignment` is set to None)
+        the encoding is binary, and each column is suited to train a Logistic Regression
+    features : list of str
+        Features included in `X`
+    protein_index : list 
+        protein index, comaptible with both `X` and `y`
+    terms_index : list
+        GO term index, compatible with the labels matrix
+    set_index : list
+        indicates to which set each sample of `X` and `y` belong, values are
+        "train", "validation", "test", where "train" were used to learn the
+        protein representations.
+    """
+    features = features_df.columns[~features_df.columns.isin(["protein", "set"])].to_numpy()
+    log.info(f"Loading function assignment file: {function_assignment_filename}")
+    annotations = pd.read_table(function_assignment_filename)
+    annotations.columns = ["protein", "goterm"]
+    if goterms != "all":
+        annotations = annotations[annotations["goterm"].isin(goterms)]
+    annotations = annotations.merge(features_df[["protein", "set"]])
+
+    log.info("Building dataset")
+    y = annotations[["protein", "goterm"]].drop_duplicates()
+    y["value"] = 1
+    y = y.pivot("protein", "goterm", "value").fillna(0).reset_index()
+
+    terms_index = y.columns[~y.columns.isin(["protein"])].to_numpy()
+    dataset = features_df.merge(y)
+    protein_index = dataset["protein"].to_numpy()
+    set_index = dataset["set"].to_numpy()
+
+    return (dataset[features].values, dataset[terms_index].values, 
+            features, protein_index, terms_index, set_index)
+
+def get_prot2vec_features(features_filename:Union[str, Path]) -> pd.DataFrame:
+    """
+    Builds a DataFrame dataset from pre-processed files
+
+    Parameters
+    ----------
+    features_filename : Path
+        Features to use per protein, this should be a pickled file generated with the
+        generate_vectors.py script.
+
+    Returns
+    -------
+    pd.DataFrame
+        features for all proteins
+    """
+    log.info(f"Loading protein representations file: {features_filename}")
+    vecs = pd.read_pickle(features_filename)
+    num_features = vecs.iloc[0].vector.shape[0]
+    features = [f"prot2vec_{i}" for i in range(num_features)]
+    vecs = pd.concat([vecs, pd.DataFrame(vecs["vector"].to_list(),
+                                         index=vecs.index,
+                                         columns=features)], axis=1)
+    vecs = vecs[["protein", "set"] + features]
+    return vecs
+
+
+def get_interpro_features(train_file:Union[str, Path],
+                          val_file:Union[str, Path], 
+                          test_file:Union[str, Path], 
+                          fmt="tsv", 
+                          num_features:int=-1) -> pd.DataFrame:
+    log.info("Loading Interpro Files")
+    interpro_dataset = None
+    for filename, set_label in zip([train_file, val_file, test_file], ["train", "validation", "test"]):
+        log.info(f"Loading {set_label} file: {filename}")
+        if fmt == "pkl":
+            df = pd.read_pickle(filename)
+        elif fmt == "tsv":
+            df = pd.read_table(filename)
+        df["set"] = set_label
+        if interpro_dataset is None:
+            interpro_dataset = df
+        else:
+            interpro_dataset = pd.concat([interpro_dataset, df])
+    ip_features = interpro_dataset.columns[~interpro_dataset.columns.isin(["Protein accession", "set"])].to_numpy()
+    if num_features != -1:
+        log.info(f"Reducing the number of InterPro features to {num_features}")
+        ip_features = ip_features[:num_features]
+    interpro_dataset = interpro_dataset[["Protein accession", "set"] + ip_features.tolist()]
+    interpro_dataset.columns = ["protein", "set"] + ip_features.tolist() 
+    return interpro_dataset

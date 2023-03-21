@@ -3,15 +3,15 @@ import torch.optim as optim
 import torch.nn.functional as F
 import numpy as np
 import pandas as pd
-from tools.datasets import FastSemanticSimilarityDataset
-from models import (SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
-                    SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron,
-                    SiameseSimilarityMultiTask)
-from models import load_checkpoint
+from prot2vec.tools.datasets import FastSemanticSimilarityDataset
+from prot2vec.models import (SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
+                            SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron,
+                            SiameseSimilarityMultiTask)
+from prot2vec.models import load_checkpoint
 from itertools import product
 from torch.utils.data import DataLoader
 from rich.progress import track
-from Utils import Configuration
+from prot2vec.Utils import Configuration
 import os
 
 def extract_proteins_representation_dict(device, model, dataset, set_label, data):
@@ -51,21 +51,29 @@ def run(run_config):
     batch_size_test = config["model"]["batch_size_test"]
 
     interpro_pca = config["dataset"]["interpro_pca"]
+    num_pca = config["dataset"]["num_pca"]
+    interpro_filename = config["dataset"]["interpro_filename"]
 
     print('Loading training set...')
     ss_bp_train = FastSemanticSimilarityDataset(dir_train,
                                                 batch_size=batch_size_train,
                                                 shuffle=True, interpro_pca=interpro_pca, 
+                                                num_pca=num_pca,
+                                                interpro_filename=interpro_filename,
                                                 ignore_pairwise=True)
     print('Loading validation set...')
     ss_bp_val = FastSemanticSimilarityDataset(dir_val,
                                               batch_size=batch_size_val,
                                               shuffle=True, interpro_pca=interpro_pca,
+                                              num_pca=num_pca,
+                                              interpro_filename=interpro_filename,
                                               ignore_pairwise=True)
     print('Loading test set...')
     ss_bp_test = FastSemanticSimilarityDataset(dir_test,
                                                batch_size=batch_size_test,
                                                shuffle=True, interpro_pca=interpro_pca, 
+                                               num_pca=num_pca,
+                                               interpro_filename=interpro_filename,
                                                ignore_pairwise=True)
 
     model_classes = [

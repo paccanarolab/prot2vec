@@ -38,7 +38,7 @@ from collections import defaultdict
 import numpy as np
 import pandas as pd
 
-from Utils import ColourClass, FancyApp, ProgressBar
+from prot2vec.Utils import ColourClass, FancyApp, ProgressBar
 
 if __name__ == '__main__':
     import OboParser

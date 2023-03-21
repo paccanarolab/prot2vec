@@ -1,5 +1,6 @@
 from .siamese import *
 from .knn import *
+from .logistic_regression import *
 import torch
 
 def count_parameters(model):

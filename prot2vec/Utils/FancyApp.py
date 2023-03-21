@@ -1,4 +1,4 @@
-from Utils import ColourClass
+from prot2vec.Utils import ColourClass
 import time
 import sys
 

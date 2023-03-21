@@ -1,15 +1,15 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from tools.datasets import FastSemanticSimilarityDataset
-from tools.utils import TrainingProgress
+from prot2vec.tools.datasets import FastSemanticSimilarityDataset
+from prot2vec.tools.utils import TrainingProgress
 from datetime import datetime
 import matplotlib.pyplot as plt
-from models import (SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
-                    SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron)
-from models import count_parameters, save_checkpoint
+from prot2vec.models import (SiameseSimilarityNet, SiameseSimilarityPerceptronNet,
+                             SiameseSimilaritySmall, SiameseSimilaritySmallPerceptron)
+from prot2vec.models import count_parameters, save_checkpoint
 from itertools import product
-from Utils import Configuration
+from prot2vec.Utils import Configuration
 import pickle
 import os
 
@@ -29,6 +29,7 @@ def run(run_config, gpu_device, train_only):
     dir_val = config["dataset"]["dir_val"]
 
     interpro_pca = config["dataset"]["interpro_pca"]
+    num_pca = config["dataset"]["num_pca"]
     interpro_filename = config["dataset"]["interpro_filename"]
     semantic_similarity_filename = config["dataset"]["semantic_similarity_filename"]
 
@@ -37,6 +38,7 @@ def run(run_config, gpu_device, train_only):
                                                 batch_size=batch_size_train,
                                                 shuffle=True,
                                                 interpro_pca=interpro_pca,
+                                                num_pca=num_pca,
                                                 interpro_filename=interpro_filename, 
                                                 semantic_similarity_filename=semantic_similarity_filename)
     print("train", ss_bp_train.dataset_len)
@@ -48,6 +50,7 @@ def run(run_config, gpu_device, train_only):
                                                   batch_size=batch_size_val,
                                                   shuffle=True,
                                                   interpro_pca=interpro_pca,
+                                                  num_pca=num_pca,
                                                   interpro_filename=interpro_filename, 
                                                   semantic_similarity_filename=semantic_similarity_filename)
     # ss_bp_train = SemanticSimilarityOnDeviceDataset('../83333/train_data/', device)
