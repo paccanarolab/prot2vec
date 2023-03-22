@@ -2,14 +2,14 @@ import numpy as np
 import pandas as pd
 from prot2vec.Utils import Configuration
 from prot2vec.tools.log import setup_logger
-from prot2vec.tools.datasets import build_dataset, get_prot2vec_features, get_interpro_features
+from prot2vec.tools.datasets import get_prot2vec_features
 from prot2vec.models import GOTermLogisticRegression
 from pathlib import Path
 from rich.progress import track
 import logging
 
 
-def run(run_config, feature_mode="prot2vec"):
+def run(run_config):
     log = logging.getLogger("prot2vec")
     log.info(f"Loading configuration file: {run_config}")
     config = Configuration.load_pfp_lr(run_config) 
@@ -36,7 +36,7 @@ def run(run_config, feature_mode="prot2vec"):
         lr = GOTermLogisticRegression(lr_out)
         lr.load_trained_model()
         condition = features_df["set"] == "test"
-        features = features_df.colums[~features_df.columns.isin(["protein", "set"])].to_numpy()
+        features = features_df.columns[~features_df.columns.isin(["protein", "set"])].to_numpy()
         X_test = features_df[condition][features].to_numpy()
         tot_terms = len(lr.models_)
         predictions = np.empty((X_test.shape[0], tot_terms))
