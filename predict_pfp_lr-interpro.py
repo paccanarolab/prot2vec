@@ -36,6 +36,10 @@ def run(run_config):
     for function_assignment, domain in zip([function_assignment_bp, function_assignment_mf, function_assignment_cc],
                                            ["BP", "MF", "CC"]):
         log.info(f"Processing domain {domain}")
+        outfile = Path(f"{pred_out}-{domain}-IP.tsv")
+        if outfile.exists():
+            log.info(f"{outfile} exists, skipping computation")
+            continue
         function_assignment = Path(function_assignment)
         lr_out = dir_lr_out / domain
         lr = GOTermLogisticRegression(lr_out)
@@ -54,7 +58,7 @@ def run(run_config):
         p_df = pd.DataFrame(data=predictions,
                             columns=t_index)
         p_df["protein"] = features_df[condition]["protein"]
-        p_df[["protein"] + t_index].to_csv(f"{pred_out}-{domain}-IP.tsv", sep="\t", index=False)
+        p_df[["protein"] + t_index].to_csv(outfile, sep="\t", index=False)
         
     log.info("Done")
 
