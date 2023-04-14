@@ -46,9 +46,11 @@ class InterProParser(object):
     def __init__(self,
                  interpro_file: str,
                  goterm: bool=False,
-                 pathway: bool=False) -> None:
+                 pathway: bool=False,
+                 clean_accessions: bool=True) -> None:
         self.infile = interpro_file
         self.columns = InterProParser.INTERPRO_COLUMNS.copy()
+        self.clean_accessions = clean_accessions
         if goterm:
             self.columns.append(InterProParser.INTERPRO_GOTERM_COLUMN)
         if pathway:
@@ -63,7 +65,8 @@ class InterProParser(object):
 
     def _parse_to_pandas(self) -> pd.DataFrame:
         df = pd.read_csv(self.infile, sep='\t', names=self.columns)
-        df['Protein accession'] = df['Protein accession'].apply(extract_uniprot_accession)
+        if self.clean_accessions:
+            df['Protein accession'] = df['Protein accession'].apply(extract_uniprot_accession)
         return df
 
     def _parse_to_dataset(self) -> pd.DataFrame:
