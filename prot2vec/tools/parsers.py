@@ -2,7 +2,7 @@ from rich.progress import track
 import numpy as np
 import pandas as pd
 import os
-from typing import Tuple
+from typing import Tuple, Union
 from scipy import sparse
 
 def extract_uniprot_accession(protein_id: str) -> str:
@@ -56,7 +56,7 @@ class InterProParser(object):
         if pathway:
             self.columns.append(InterProParser.INTERPRO_PATHWAY_COLUMN)
 
-    def parse(self, ret_type: str = 'numpy'):
+    def parse(self, ret_type: str = 'numpy') -> Union[pd.DataFrame, Tuple]:
         if ret_type == 'pandas':
             return self._parse_to_pandas()
         elif ret_type == 'dataset':

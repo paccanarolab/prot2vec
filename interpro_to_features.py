@@ -2,7 +2,7 @@ from prot2vec.tools.parsers import InterProParser
 from prot2vec.tools.log import setup_logger
 import logging
 
-def run(interpro_file, out_file, clean_accessions):
+def run(interpro_file: str, out_file: str, clean_accessions: bool) -> None:
     log = logging.getLogger("prot2vec")
     log.info(f"Loading interpro file: {interpro_file}")
     parser = InterProParser(interpro_file, clean_accessions=clean_accessions)
