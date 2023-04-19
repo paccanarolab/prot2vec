@@ -2,7 +2,7 @@ from rich.progress import track
 import numpy as np
 import pandas as pd
 import os
-from typing import Tuple, Union
+from typing import Dict, Tuple, Union
 from scipy import sparse
 
 def extract_uniprot_accession(protein_id: str) -> str:
@@ -21,6 +21,17 @@ def extract_uniprot_accession(protein_id: str) -> str:
     """
     return protein_id.split('|')[1]
 
+def parse_scop_protein_fasta(protein_line: str) -> Dict:
+    protein, class_id, class_pdbid, class_uniid = protein_line[1:].strip().split()
+    class_key, class_id = class_id.split("=")
+    class_pdbid_key, class_pdbid = class_pdbid.split("=")
+    class_uniid_key, class_uniid = class_uniid.split("=")
+    return {
+        "protein_id":protein,
+        class_key: class_id,
+        class_pdbid_key: class_pdbid,
+        class_uniid_key: class_uniid
+    }
 
 class InterProParser(object):
 

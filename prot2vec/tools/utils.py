@@ -1,4 +1,5 @@
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn, TimeRemainingColumn
+from scipy.stats import norm
 
 class TrainingProgress(Progress):
     def get_renderables(self):
@@ -39,6 +40,16 @@ def save_list_to_file(item_list, filename):
     with open(filename, 'w') as out:
         for item in item_list:
             out.write(str(item) + '\n')
+
+
+def zscore_to_pvalue(z, two_tailed=False):
+    if z > 0:
+        p = 1 - norm.cdf(z) 
+    else:
+        p = norm.cdf(z)
+    if two_tailed:
+        return 2 * p
+    return p
 
 
 def assert_lexicographical_order(df, p1='protein1', p2='protein2'):

@@ -30,4 +30,4 @@ if __name__ == '__main__':
                              "accession number",
                         action="store_true")
     args = parser.parse_args()
-    run(args.interpro_file, args.output_filei, args.clean_protein_accessions)
+    run(args.interpro_file, args.output_file, args.clean_protein_accessions)
