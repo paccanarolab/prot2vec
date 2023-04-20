@@ -4,18 +4,22 @@ from prot2vec.tools.log import setup_logger
 from prot2vec.tools.datasets import get_prot2vec_features
 from prot2vec.tools.parsers import parse_scop_protein_fasta
 from prot2vec.tools.utils import zscore_to_pvalue
-from scipy.spatial.distance import pdist, squareform
+from sklearn.metrics import pairwise_distances
 from rich.progress import track
 import logging
 
 
 
 
-def run(representation_file: str, fasta_file: str, seed: int, out_file: str) -> None:
+def run(representation_file: str, fasta_file: str, seed: int, out_file: str, mode: str = "prot2vec", n_jobs: int=-1) -> None:
     log = logging.getLogger("prot2vec")
-    log.info(f"Loading representation file: {representation_file}")
-    dataset = get_prot2vec_features(representation_file)
-    dataset["protein"] = dataset["protein"].astype(str)
+    log.info(f"Loading representation file: {representation_file} with mode {mode}")
+    if mode == "prot2vec":
+        dataset = get_prot2vec_features(representation_file)
+        dataset["protein"] = dataset["protein"].astype(str)
+    else:
+        dataset = pd.read_table(representation_file)
+        dataset["Protein accesssion"] = dataset["Protein accession"].astype(str)
 
     log.info(f"Loading SCOP classes from fasta file {fasta_file}...")
     fasta_type = "UNK"
@@ -30,8 +34,11 @@ def run(representation_file: str, fasta_file: str, seed: int, out_file: str) -> 
     scop_df = pd.DataFrame(scop_df)
 
     log.info("Calculating pairwise distances...")
-    features = dataset.columns[~dataset.columns.isin(["protein", "set"])]
-    distances = squareform(pdist(np.stack(dataset[features].values), metric="cosine"))
+    not_feature_cols = ["protein", "set"] if mode == "prot2vec" else ["Protein accession"]
+    distance_metric = "cosine" if mode == "prot2vec" else "jaccard"
+    accession_col = "protein" if mode == "prot2vec" else "Protein accession"
+    features = dataset.columns[~dataset.columns.isin(not_feature_cols)]
+    distances = pairwise_distances(dataset[features].values, metric=distance_metric, n_jobs=n_jobs)
     z_score_samples = 1000
     min_proteins = 5 # minimum number of proteins to consider in each group
     vcounts = scop_df[fasta_type].value_counts()
@@ -45,7 +52,7 @@ def run(representation_file: str, fasta_file: str, seed: int, out_file: str) -> 
         cond = scop_df[fasta_type] == scop_class
         prots = scop_df[cond]["protein_id"].values
         size = prots.shape[0]
-        cond = dataset["protein"].isin(prots)
+        cond = dataset[accession_col].isin(prots)
         idx = dataset[cond].index
         x = distances[idx, :][:, idx][np.triu_indices(idx.shape[0], k=1)].mean()
         background = np.empty(z_score_samples)
@@ -86,6 +93,14 @@ if __name__ == '__main__':
                         help="seed for the random number generator",
                         type=int,
                         default=0)
+    parser.add_argument("--num-cpu",
+                        help="number of CPU cores to use while calcualting "
+                             "pairwise distances. -1 indicates ALL cores.",
+                        type=int,
+                        default=-1)
+    parser.add_argument("--mode",
+                        help="type of feature to be found in the representations file",
+                        default="prot2vec", choices=["prot2vec", "interpro"])
     args = parser.parse_args()
-    run(args.representation_file, args.fasta_file, args.seed, args.output_file)
+    run(args.representation_file, args.fasta_file, args.seed, args.output_file, args.mode)
 
