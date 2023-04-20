@@ -14,12 +14,11 @@ import logging
 def run(representation_file: str, fasta_file: str, seed: int, out_file: str, mode: str = "prot2vec", n_jobs: int=-1) -> None:
     log = logging.getLogger("prot2vec")
     log.info(f"Loading representation file: {representation_file} with mode {mode}")
+    accession_col = "protein" if mode == "prot2vec" else "Protein accession"
     if mode == "prot2vec":
         dataset = get_prot2vec_features(representation_file)
-        dataset["protein"] = dataset["protein"].astype(str)
     else:
         dataset = pd.read_table(representation_file)
-        dataset["Protein accesssion"] = dataset["Protein accession"].astype(str)
 
     log.info(f"Loading SCOP classes from fasta file {fasta_file}...")
     fasta_type = "UNK"
@@ -44,6 +43,7 @@ def run(representation_file: str, fasta_file: str, seed: int, out_file: str, mod
     vcounts = scop_df[fasta_type].value_counts()
     test_classes = vcounts[vcounts >= min_proteins].index
 
+    dataset[accession_col] = dataset[accession_col].astype(str)
     log.info(f"Calculating Z-Score for {test_classes.shape[0]} classes")
     rng = np.random.default_rng(seed)
     test_data = {k:[] for k in [f"SCOP-{fasta_type}", "z-score", "p-value", "size"]}
