@@ -102,5 +102,6 @@ if __name__ == '__main__':
                         help="type of feature to be found in the representations file",
                         default="prot2vec", choices=["prot2vec", "interpro"])
     args = parser.parse_args()
-    run(args.representation_file, args.fasta_file, args.seed, args.output_file, args.mode)
+    run(args.representation_file, args.fasta_file, args.seed, args.output_file, 
+        mode=args.mode, n_jobs=args.num_cpu)
 
