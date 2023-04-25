@@ -7,10 +7,7 @@ from sklearn.cluster import KMeans
 from rich.progress import track
 import logging
 
-
-
-
-def run(representation_file: str, fasta_file: str, seed: int, out_file: str, mode: str = "prot2vec", n_jobs: int=-1) -> None:
+def run(representation_file: str, fasta_file: str, out_file: str, mode: str = "prot2vec", n_clusters: int=-1) -> None:
     log = logging.getLogger("prot2vec")
     log.info(f"Loading representation file: {representation_file} with mode {mode}")
     accession_col = "protein" if mode == "prot2vec" else "Protein accession"
@@ -37,10 +34,11 @@ def run(representation_file: str, fasta_file: str, seed: int, out_file: str, mod
     min_proteins = 5 # minimum number of proteins to consider in each group
     vcounts = scop_df[fasta_type].value_counts()
     test_classes = vcounts[vcounts >= min_proteins].index
-    log.info("Training K-means...")
-    k_means = KMeans(n_clusters=test_classes.shape[0])
+    k = test_classes.shape[0] if n_clusters == -1 else n_clusters
+    log.info(f"Training K-means with k={k}...")
+    k_means = KMeans(n_clusters=k)
     X_transformed = k_means.fit_transform(dataset[features].values) 
-    dataset["cluster"] = np.argmin(X_transformed)
+    dataset["cluster"] = np.argmin(X_transformed, axis=1)
     
     log.info(f"Writing results to {out_file}")
     dataset[[accession_col, "cluster"]].to_csv(out_file, index=False, sep="\t")
@@ -61,19 +59,15 @@ if __name__ == '__main__':
     parser.add_argument("--output-file",
                         help="Path to the output file",
                         required=False)
-    parser.add_argument("--seed",
-                        help="seed for the random number generator",
-                        type=int,
-                        default=0)
-    parser.add_argument("--num-cpu",
-                        help="number of CPU cores to use while calcualting "
-                             "pairwise distances. -1 indicates ALL cores.",
+    parser.add_argument("--num-clusters",
+                        help="number of clusters to get "
+                             "-1 indicates the same as the number of classes.",
                         type=int,
                         default=-1)
     parser.add_argument("--mode",
                         help="type of feature to be found in the representations file",
                         default="prot2vec", choices=["prot2vec", "interpro"])
     args = parser.parse_args()
-    run(args.representation_file, args.fasta_file, args.seed, args.output_file, 
-        mode=args.mode, n_jobs=args.num_cpu)
+    run(args.representation_file, args.fasta_file, args.output_file, 
+        mode=args.mode, n_clusters=args.num_clusters)
 
