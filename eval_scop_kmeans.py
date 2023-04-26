@@ -7,7 +7,10 @@ from sklearn.cluster import KMeans
 from rich.progress import track
 import logging
 
-def run(representation_file: str, fasta_file: str, out_file: str, mode: str = "prot2vec", n_clusters: int=-1) -> None:
+def run(representation_file: str, fasta_file: str, out_file: str, 
+        mode: str = "prot2vec", 
+        min_proteins: int=5,
+        n_clusters: int=-1) -> None:
     log = logging.getLogger("prot2vec")
     log.info(f"Loading representation file: {representation_file} with mode {mode}")
     accession_col = "protein" if mode == "prot2vec" else "Protein accession"
@@ -31,18 +34,22 @@ def run(representation_file: str, fasta_file: str, out_file: str, mode: str = "p
     log.info("Extracting features...")
     not_feature_cols = ["protein", "set"] if mode == "prot2vec" else ["Protein accession"]
     features = dataset.columns[~dataset.columns.isin(not_feature_cols)]
-    min_proteins = 5 # minimum number of proteins to consider in each group
+    min_proteins = min_proteins # minimum number of proteins to consider in each group
     vcounts = scop_df[fasta_type].value_counts()
     test_classes = vcounts[vcounts >= min_proteins].index
+    cond = scop_df[fasta_type].isin(test_classes)
+    proteins = scop_df[cond]["protein_id"].unique()
+    dataset[accession_col] = dataset[accession_col].astype(str)
+    log.info(f"Filtering dataset with {proteins.shape[0]} valid proteins...")
+    cond = dataset[accession_col].isin(proteins)
+    dataset = dataset[cond]
     k = test_classes.shape[0] if n_clusters == -1 else n_clusters
     log.info(f"Training K-means with k={k}...")
     k_means = KMeans(n_clusters=k)
     X_transformed = k_means.fit_transform(dataset[features].values) 
     dataset["cluster"] = np.argmin(X_transformed, axis=1)
-    
     log.info(f"Writing results to {out_file}")
     dataset[[accession_col, "cluster"]].to_csv(out_file, index=False, sep="\t")
-
     log.info("Done")
 
 if __name__ == '__main__':
@@ -59,6 +66,10 @@ if __name__ == '__main__':
     parser.add_argument("--output-file",
                         help="Path to the output file",
                         required=False)
+    parser.add_argument("--min-proteins",
+                        help="Minimum number of proteins to consider a class for prediction",
+                        type=int,
+                        default=5)
     parser.add_argument("--num-clusters",
                         help="number of clusters to get "
                              "-1 indicates the same as the number of classes.",
@@ -69,5 +80,5 @@ if __name__ == '__main__':
                         default="prot2vec", choices=["prot2vec", "interpro"])
     args = parser.parse_args()
     run(args.representation_file, args.fasta_file, args.output_file, 
-        mode=args.mode, n_clusters=args.num_clusters)
+        mode=args.mode, min_proteins=args.min_proteins, n_clusters=args.num_clusters)
 

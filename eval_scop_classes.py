@@ -7,11 +7,11 @@ from prot2vec.tools.utils import zscore_to_pvalue
 from sklearn.metrics import pairwise_distances
 from rich.progress import track
 import logging
+from itertools import combinations
+import sys
 
-
-
-
-def run(representation_file: str, fasta_file: str, seed: int, out_file: str, mode: str = "prot2vec", n_jobs: int=-1) -> None:
+def run(representation_file: str, fasta_file: str, seed: int, out_file: str, 
+        mode: str = "prot2vec", min_proteins:int = 5, n_jobs: int=-1) -> None:
     log = logging.getLogger("prot2vec")
     log.info(f"Loading representation file: {representation_file} with mode {mode}")
     accession_col = "protein" if mode == "prot2vec" else "Protein accession"
@@ -39,7 +39,7 @@ def run(representation_file: str, fasta_file: str, seed: int, out_file: str, mod
     features = dataset.columns[~dataset.columns.isin(not_feature_cols)]
     distances = pairwise_distances(dataset[features].values, metric=distance_metric, n_jobs=n_jobs)
     z_score_samples = 1000
-    min_proteins = 5 # minimum number of proteins to consider in each group
+    min_proteins = min_proteins # minimum number of proteins to consider in each group
     vcounts = scop_df[fasta_type].value_counts()
     test_classes = vcounts[vcounts >= min_proteins].index
 
@@ -89,6 +89,10 @@ if __name__ == '__main__':
     parser.add_argument("--output-file",
                         help="Path to the output file",
                         required=False)
+    parser.add_argument("--min-proteins",
+                        help="Minimum number of proteins to consider a class for prediction",
+                        type=int,
+                        default=5)
     parser.add_argument("--seed",
                         help="seed for the random number generator",
                         type=int,
@@ -102,6 +106,7 @@ if __name__ == '__main__':
                         help="type of feature to be found in the representations file",
                         default="prot2vec", choices=["prot2vec", "interpro"])
     args = parser.parse_args()
+    write_distances = args.distances_file != ""
     run(args.representation_file, args.fasta_file, args.seed, args.output_file, 
-        mode=args.mode, n_jobs=args.num_cpu)
+        mode=args.mode, min_proteins=args.min_proteins, n_jobs=args.num_cpu)
 
