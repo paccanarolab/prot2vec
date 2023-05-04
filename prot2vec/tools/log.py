@@ -1,5 +1,6 @@
 import logging
 
+
 def setup_logger(name):
     # create logger
     logger = logging.getLogger(name)
@@ -10,12 +11,11 @@ def setup_logger(name):
     ch.setLevel(logging.DEBUG)
 
     # create formatter
-    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
     # add formatter to ch
     ch.setFormatter(formatter)
 
-    #add ch to logger
+    # add ch to logger
     logger.addHandler(ch)
-
-

@@ -7,13 +7,14 @@ from prot2vec.tools.utils import zscore_to_pvalue
 from sklearn.metrics import pairwise_distances
 from rich.progress import track
 import logging
-from itertools import combinations
-import sys
 
-def run(representation_file: str, fasta_file: str, seed: int, out_file: str, 
-        mode: str = "prot2vec", min_proteins:int = 5, n_jobs: int=-1) -> None:
+
+def run(representation_file: str, fasta_file: str, seed: int, out_file: str,
+        mode: str = "prot2vec", min_proteins: int = 5,
+        n_jobs: int = -1) -> None:
     log = logging.getLogger("prot2vec")
-    log.info(f"Loading representation file: {representation_file} with mode {mode}")
+    log.info("Loading representation file: "
+             f"{representation_file} with mode {mode}")
     accession_col = "protein" if mode == "prot2vec" else "Protein accession"
     if mode == "prot2vec":
         dataset = get_prot2vec_features(representation_file)
@@ -22,7 +23,7 @@ def run(representation_file: str, fasta_file: str, seed: int, out_file: str,
 
     log.info(f"Loading SCOP classes from fasta file {fasta_file}...")
     fasta_type = "UNK"
-    scop_df = [] 
+    scop_df = []
     with open(fasta_file) as fasta:
         for line in fasta:
             if line[0] == ">":
@@ -37,28 +38,33 @@ def run(representation_file: str, fasta_file: str, seed: int, out_file: str,
     distance_metric = "cosine" if mode == "prot2vec" else "jaccard"
     accession_col = "protein" if mode == "prot2vec" else "Protein accession"
     features = dataset.columns[~dataset.columns.isin(not_feature_cols)]
-    distances = pairwise_distances(dataset[features].values, metric=distance_metric, n_jobs=n_jobs)
+    distances = pairwise_distances(dataset[features].values,
+                                   metric=distance_metric, n_jobs=n_jobs)
     z_score_samples = 1000
-    min_proteins = min_proteins # minimum number of proteins to consider in each group
+    min_proteins = min_proteins  # min number of proteins to use in each group
     vcounts = scop_df[fasta_type].value_counts()
     test_classes = vcounts[vcounts >= min_proteins].index
 
     dataset[accession_col] = dataset[accession_col].astype(str)
     log.info(f"Calculating Z-Score for {test_classes.shape[0]} classes")
     rng = np.random.default_rng(seed)
-    test_data = {k:[] for k in [f"SCOP-{fasta_type}", "z-score", "p-value", "size"]}
+    test_data = {k: [] for k in [
+        f"SCOP-{fasta_type}", "z-score", "p-value", "size"]}
     for i, scop_class in enumerate(test_classes):
-        log.info(f"evaluating {scop_class}: ({i/test_classes.shape[0] * 100.0:.2f}%)")
+        log.info(f"evaluating {scop_class}: "
+                 f"({i/test_classes.shape[0] * 100.0:.2f}%)")
         cond = scop_df[fasta_type] == scop_class
         prots = scop_df[cond]["protein_id"].values
         size = prots.shape[0]
         cond = dataset[accession_col].isin(prots)
         idx = dataset[cond].index
-        x = distances[idx, :][:, idx][np.triu_indices(idx.shape[0], k=1)].mean()
+        x = distances[idx, :][:, idx][
+            np.triu_indices(idx.shape[0], k=1)].mean()
         background = np.empty(z_score_samples)
         for j in track(range(z_score_samples), total=z_score_samples):
             idx = rng.choice(dataset.shape[0], size=size, replace=False)
-            background[j] = distances[idx, :][:, idx][np.triu_indices(idx.shape[0], k=1)].mean()
+            background[j] = distances[idx, :][:, idx][
+                np.triu_indices(idx.shape[0], k=1)].mean()
         m = background.mean()
         s = background.std()
         if s == 0:
@@ -69,17 +75,19 @@ def run(representation_file: str, fasta_file: str, seed: int, out_file: str,
         test_data["z-score"].append(z)
         test_data["p-value"].append(zscore_to_pvalue(z))
         test_data["size"].append(size)
-    
+
     log.info(f"Writing results to {out_file}")
     pd.DataFrame(test_data).to_csv(out_file, index=False, sep="\t")
 
     log.info("Done")
 
+
 if __name__ == '__main__':
     import argparse
 
     setup_logger("prot2vec")
-    parser = argparse.ArgumentParser("test SCOP categories within a prot2vec space")
+    parser = argparse.ArgumentParser(
+        "test SCOP categories within a prot2vec space")
     parser.add_argument("--representation-file",
                         help="Path to the protein representations file",
                         required=True)
@@ -90,7 +98,8 @@ if __name__ == '__main__':
                         help="Path to the output file",
                         required=False)
     parser.add_argument("--min-proteins",
-                        help="Minimum number of proteins to consider a class for prediction",
+                        help="Minimum number of proteins to consider"
+                             " a class for prediction",
                         type=int,
                         default=5)
     parser.add_argument("--seed",
@@ -103,10 +112,10 @@ if __name__ == '__main__':
                         type=int,
                         default=-1)
     parser.add_argument("--mode",
-                        help="type of feature to be found in the representations file",
+                        help="type of feature to be found in "
+                             "the representations file",
                         default="prot2vec", choices=["prot2vec", "interpro"])
     args = parser.parse_args()
     write_distances = args.distances_file != ""
-    run(args.representation_file, args.fasta_file, args.seed, args.output_file, 
+    run(args.representation_file, args.fasta_file, args.seed, args.output_file,
         mode=args.mode, min_proteins=args.min_proteins, n_jobs=args.num_cpu)
-

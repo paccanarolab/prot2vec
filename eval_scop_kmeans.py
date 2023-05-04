@@ -6,6 +6,7 @@ from prot2vec.tools.parsers import parse_scop_protein_fasta
 from sklearn.cluster import KMeans
 from rich.progress import track
 import logging
+import sys
 
 def run(representation_file: str, fasta_file: str, out_file: str, 
         mode: str = "prot2vec", 
@@ -43,6 +44,9 @@ def run(representation_file: str, fasta_file: str, out_file: str,
     log.info(f"Filtering dataset with {proteins.shape[0]} valid proteins...")
     cond = dataset[accession_col].isin(proteins)
     dataset = dataset[cond]
+    if n_clusters > test_classes.shape[0]:
+        log.info("stopping because configured k is larger than the true number of classes")
+        sys.exit(1)
     k = test_classes.shape[0] if n_clusters == -1 else n_clusters
     log.info(f"Training K-means with k={k}...")
     k_means = KMeans(n_clusters=k)

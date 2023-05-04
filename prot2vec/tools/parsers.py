@@ -1,13 +1,13 @@
-from rich.progress import track
 import numpy as np
 import pandas as pd
-import os
 from typing import Dict, Tuple, Union
 from scipy import sparse
 
+
 def extract_uniprot_accession(protein_id: str) -> str:
     """
-    Transform a UniProt protein id from the format db|accession|ID to simply the accession
+    Transform a UniProt protein id from the format
+    db|accession|ID to simply the accession
 
     Parameters
     ----------
@@ -21,44 +21,49 @@ def extract_uniprot_accession(protein_id: str) -> str:
     """
     return protein_id.split('|')[1]
 
+
 def parse_scop_protein_fasta(protein_line: str) -> Dict:
-    protein, class_id, class_pdbid, class_uniid = protein_line[1:].strip().split()
+    protein, class_id, class_pdbid, class_uniid = (protein_line[1:]
+                                                   .strip().split())
     class_key, class_id = class_id.split("=")
     class_pdbid_key, class_pdbid = class_pdbid.split("=")
     class_uniid_key, class_uniid = class_uniid.split("=")
     return {
-        "protein_id":protein,
+        "protein_id": protein,
         class_key: class_id,
         class_pdbid_key: class_pdbid,
         class_uniid_key: class_uniid
     }
 
+
 class InterProParser(object):
 
     INTERPRO_COLUMNS = ["Protein accession",
-        "Sequence MD5 digest",
-        "Sequence length",
-        "Analysis",
-        "Signature accession",
-        "Signature description",
-        "Start location",
-        "Stop location",
-        "Score",
-        "Status",
-        "Date",
-        "InterPro accession",
-        "InterPro description"]
+                        "Sequence MD5 digest",
+                        "Sequence length",
+                        "Analysis",
+                        "Signature accession",
+                        "Signature description",
+                        "Start location",
+                        "Stop location",
+                        "Score",
+                        "Status",
+                        "Date",
+                        "InterPro accession",
+                        "InterPro description"]
 
-    # (GO annotations (e.g. GO:0005515) - optional column; only displayed if –goterms option is switched on)
+    # (GO annotations (e.g. GO:0005515) - optional column;
+    # only displayed if –goterms option is switched on)
     INTERPRO_GOTERM_COLUMN = "GO term"
-    # (Pathways annotations (e.g. REACT_71) - optional column; only displayed if –pathways option is switched on)"""
+    # (Pathways annotations (e.g. REACT_71) - optional column;
+    # only displayed if –pathways option is switched on)"""
     INTERPRO_PATHWAY_COLUMN = "Pathway"
 
     def __init__(self,
                  interpro_file: str,
-                 goterm: bool=False,
-                 pathway: bool=False,
-                 clean_accessions: bool=True) -> None:
+                 goterm: bool = False,
+                 pathway: bool = False,
+                 clean_accessions: bool = True) -> None:
         self.infile = interpro_file
         self.columns = InterProParser.INTERPRO_COLUMNS.copy()
         self.clean_accessions = clean_accessions
@@ -77,7 +82,8 @@ class InterProParser(object):
     def _parse_to_pandas(self) -> pd.DataFrame:
         df = pd.read_csv(self.infile, sep='\t', names=self.columns)
         if self.clean_accessions:
-            df['Protein accession'] = df['Protein accession'].apply(extract_uniprot_accession)
+            df['Protein accession'] = df['Protein accession'].apply(
+                extract_uniprot_accession)
         return df
 
     def _parse_to_dataset(self) -> pd.DataFrame:
@@ -86,20 +92,32 @@ class InterProParser(object):
         condition = data["InterPro accession"] != "-"
         data = data[condition].drop_duplicates().reset_index(drop=True)
         data['value'] = 1
-        protein_index = (pd.DataFrame(enumerate(np.sort(data["Protein accession"].unique())), 
-                                      columns=["protein idx", "Protein accession"])
-                           .set_index("Protein accession"))
-        interpro_index = (pd.DataFrame(enumerate(np.sort(data["InterPro accession"].unique())), 
-                                      columns=["interpro idx", "InterPro accession"])
-                            .set_index("InterPro accession"))
-        data = (data.merge(protein_index, 
-                          left_on="Protein accession", 
-                          right_index=True)
-                    .merge(interpro_index, 
-                           left_on="InterPro accession", 
-                           right_index=True))
-        M = sparse.coo_matrix((data["value"], (data["protein idx"].values, data["interpro idx"].values)))
-        return pd.DataFrame(data=M.toarray(), index=protein_index.index, columns=interpro_index.index).reset_index()
+        protein_index = (
+            pd.DataFrame(
+                enumerate(np.sort(data["Protein accession"].unique())),
+                columns=["protein idx", "Protein accession"])
+            .set_index("Protein accession"))
+        interpro_index = (
+            pd.DataFrame(
+                enumerate(np.sort(data["InterPro accession"].unique())),
+                columns=["interpro idx", "InterPro accession"])
+            .set_index("InterPro accession"))
+        data = (data.merge(protein_index,
+                           left_on="Protein accession",
+                           right_index=True)
+                .merge(interpro_index,
+                       left_on="InterPro accession",
+                       right_index=True))
+        M = sparse.coo_matrix(
+            (
+                data["value"],
+                (data["protein idx"].values, data["interpro idx"].values)
+            )
+        )
+        return pd.DataFrame(
+                data=M.toarray(),
+                index=protein_index.index,
+                columns=interpro_index.index).reset_index()
 
     def _parse_to_numpy(self) -> Tuple:
         X = self._parse_to_dataset()
@@ -123,7 +141,8 @@ class SemanticSimilarityParser(object):
         proteins : list
             a list of the proteins found in the similarity matrix
         semantic_matrix : dict
-            a dictionary containing the semantic similarity for every pair of proteins
+            a dictionary containing the semantic similarity
+            for every pair of proteins
         """
         print("Loading Semantic Similarity file: " + self.filename)
         proteins = []
@@ -153,7 +172,8 @@ class SemanticSimilarityParser(object):
         proteins : list
             a list of the proteins found in the similarity matrix
         semantic_matrix : pandas.DataFrame
-            a pandas.DataFrame containing the semantic similarity for every pair of proteins
+            a pandas.DataFrame containing the semantic similarity
+            for every pair of proteins
 
         """
         d = {'protein1': [], 'protein2': [], 'similarity': []}
